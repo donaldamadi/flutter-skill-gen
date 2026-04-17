@@ -1,10 +1,10 @@
 name: flutter_skill_gen
 description: >-
-  A CLI tool that automatically generates SKILL.md files for Flutter projects,
-  giving AI coding assistants full project context from the first prompt.
+  A CLI tool that scans Flutter projects and generates SKILL.md context files
+  for AI coding assistants like Claude Code, Cursor, Copilot, and Windsurf.
 version: 0.1.0
-homepage: https://github.com/donaldamadi/flutter_skill_gen
-repository: https://github.com/donaldamadi/flutter_skill_gen
+homepage: https://github.com/donaldamadi/flutter-skill-gen
+repository: https://github.com/donaldamadi/flutter-skill-gen
 
 environment:
   sdk: ^3.8.0
