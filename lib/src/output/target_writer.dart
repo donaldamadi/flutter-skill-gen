@@ -15,6 +15,10 @@ import 'targets/windsurf.dart';
 
 /// Base class for format-specific skill file writers.
 abstract class FormatWriter {
+  /// Creates a [FormatWriter]. Subclasses provide the concrete
+  /// format behavior by overriding [format] and [outputPath].
+  const FormatWriter();
+
   /// The output format identifier.
   String get format;
 

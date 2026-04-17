@@ -25,7 +25,7 @@ class ProjectScanner {
   final Logger logger;
 
   /// The tool version embedded in generated facts.
-  static const toolVersion = '0.1.0';
+  static const toolVersion = '0.1.1';
 
   /// Scans the project and returns a [ProjectFacts] instance.
   ///

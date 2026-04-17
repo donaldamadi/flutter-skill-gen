@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Documentation
+- Added `example/README.md` with end-to-end CLI usage scenarios covering analyze, multi-target sync, watch mode, project scaffolding, API key config, and git hooks.
+- Documented the implicit `FormatWriter` default constructor so 100% of the public API is covered by dartdoc.
+
 ## 0.1.0
 
 Initial release.
