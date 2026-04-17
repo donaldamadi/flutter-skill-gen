@@ -1,0 +1,28 @@
+# Dart
+.dart_tool/
+.packages
+build/
+doc/api/
+*.g.dart.info
+
+# Generated skill output (from running the tool on itself)
+.skill_facts.json
+.skill_manifest.yaml
+SKILL.md
+
+# Test / CI reports
+reports/
+
+# VS Code extension (also has its own .gitignore)
+extension/node_modules/
+extension/out/
+extension/*.vsix
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

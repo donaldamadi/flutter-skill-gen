@@ -1,0 +1,12 @@
+# Test fixtures contain sample Flutter/Dart projects with imports
+# that are intentionally not in this package's pubspec.yaml.
+test/fixtures/
+
+# VS Code extension (published separately, not part of the Dart package).
+extension/
+
+# Generated reports.
+reports/
+
+# Generated skill file for this repo (not part of the package).
+SKILL.md

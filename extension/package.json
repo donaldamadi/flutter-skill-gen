@@ -1,0 +1,99 @@
+{
+  "name": "flutter-skill-gen",
+  "displayName": "Flutter Skill Gen",
+  "description": "Auto-generate SKILL.md context files for AI coding assistants in Flutter projects.",
+  "version": "0.1.0",
+  "publisher": "flutter-skill-gen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/donaldamadi/flutter_skill_gen"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "flutter",
+    "dart",
+    "skill",
+    "ai",
+    "context",
+    "claude",
+    "cursor",
+    "copilot"
+  ],
+  "activationEvents": [
+    "workspaceContains:pubspec.yaml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "flutterSkill.analyze",
+        "title": "Flutter Skill: Analyze Project"
+      },
+      {
+        "command": "flutterSkill.sync",
+        "title": "Flutter Skill: Sync Skill Files"
+      },
+      {
+        "command": "flutterSkill.watch",
+        "title": "Flutter Skill: Start Watch Mode"
+      },
+      {
+        "command": "flutterSkill.stopWatch",
+        "title": "Flutter Skill: Stop Watch Mode"
+      },
+      {
+        "command": "flutterSkill.previewSkill",
+        "title": "Flutter Skill: Preview SKILL.md"
+      },
+      {
+        "command": "flutterSkill.installHooks",
+        "title": "Flutter Skill: Install Git Hooks"
+      },
+      {
+        "command": "flutterSkill.generateAction",
+        "title": "Flutter Skill: Generate GitHub Action"
+      }
+    ],
+    "configuration": {
+      "title": "Flutter Skill",
+      "properties": {
+        "flutterSkill.autoSync": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically sync skill files on save."
+        },
+        "flutterSkill.cliPath": {
+          "type": "string",
+          "default": "flutter_skill_gen",
+          "description": "Path to the flutter_skill_gen CLI executable."
+        },
+        "flutterSkill.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Flutter Skill status in the status bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,25 @@
+name: sample_monorepo_app
+description: Main app for a monorepo Flutter project.
+version: 1.0.0
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  core:
+    path: ../packages/core
+  design_system:
+    path: ../packages/design_system
+  feature_auth:
+    path: ../packages/feature_auth
+  flutter:
+    sdk: flutter
+  flutter_bloc: ^8.1.0
+  get_it: ^8.0.0
+  go_router: ^14.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mocktail: ^1.0.0

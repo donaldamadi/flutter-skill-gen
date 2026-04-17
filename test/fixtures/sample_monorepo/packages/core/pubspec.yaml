@@ -1,0 +1,11 @@
+name: core
+description: Core utilities and shared logic.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  dio: ^5.7.0
+  equatable: ^2.0.0

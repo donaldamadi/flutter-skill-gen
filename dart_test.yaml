@@ -1,0 +1,11 @@
+paths:
+  - test/ai/
+  - test/analyzers/
+  - test/ci/
+  - test/cli/
+  - test/config/
+  - test/generators/
+  - test/output/
+  - test/router/
+  - test/scanner/
+  - test/templates/

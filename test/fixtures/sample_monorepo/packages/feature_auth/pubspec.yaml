@@ -1,0 +1,15 @@
+name: feature_auth
+description: Authentication feature package.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  core:
+    path: ../core
+  flutter:
+    sdk: flutter
+  flutter_bloc: ^8.1.0
