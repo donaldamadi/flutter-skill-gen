@@ -110,7 +110,9 @@ class StructureAnalyzer {
   /// 1. Explicit `features/`, `modules/`, `feature/`, `pages/` container
   /// 2. Nested features inside `presentation/pages/` or
   ///    `presentation/features/` (layer-first projects)
-  /// 3. Fallback: top-level dirs that aren't well-known non-feature names
+  /// 3. Features directly under `presentation/` or `ui/` when there is
+  ///    no intermediate container (filtered by non-feature names)
+  /// 4. Fallback: top-level dirs that aren't well-known non-feature names
   List<String> _detectFeatures(Directory libDir, List<String> topLevelDirs) {
     // 1. Check for an explicit top-level feature container.
     const featureContainerNames = ['features', 'modules', 'feature', 'pages'];
@@ -139,7 +141,20 @@ class StructureAnalyzer {
       }
     }
 
-    // 3. Fallback: top-level dirs that aren't well-known non-feature names.
+    // 3. Features directly under `presentation/` or `ui/` (no intermediate
+    //    pages/features/screens layer).
+    const directLayerContainers = ['presentation', 'ui'];
+    for (final layer in directLayerContainers) {
+      final containerDir = Directory(p.join(libDir.path, layer));
+      if (!containerDir.existsSync()) continue;
+
+      final subdirs = FileUtils.listSubdirectories(
+        containerDir,
+      ).where((d) => !_nonFeatureNames.contains(d)).toList();
+      if (subdirs.length >= 2) return subdirs;
+    }
+
+    // 4. Fallback: top-level dirs that aren't well-known non-feature names.
     return topLevelDirs
         .where((dir) => !_nonFeatureNames.contains(dir))
         .toList();
