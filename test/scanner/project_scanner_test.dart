@@ -89,7 +89,7 @@ void main() {
 
       test('includes tool version and timestamp', () {
         final facts = scanner.scan()!;
-        expect(facts.toolVersion, '0.1.1');
+        expect(facts.toolVersion, '0.1.2');
         expect(facts.generatedAt, isNotEmpty);
       });
 
@@ -150,7 +150,7 @@ void main() {
         final content = file.readAsStringSync();
         final json = jsonDecode(content) as Map<String, dynamic>;
         expect(json['project_name'], 'sample_bloc_app');
-        expect(json['tool_version'], '0.1.1');
+        expect(json['tool_version'], '0.1.2');
         expect(json['dependencies'], isA<Map<String, dynamic>>());
         expect(json['structure'], isA<Map<String, dynamic>>());
         expect(json['patterns'], isA<Map<String, dynamic>>());

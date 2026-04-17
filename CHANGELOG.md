@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+### Bug Fixes
+- Fixed feature detection for layer-first projects where features sit directly under `lib/ui/` or `lib/presentation/` without an intermediate `pages/`, `features/`, or `screens/` container. Previously these projects were detected as having 0–2 features and always fell back to single-file output; they now produce proper multi-skill splits.
+
 ## 0.1.1
 
 ### Documentation
