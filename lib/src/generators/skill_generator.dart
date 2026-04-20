@@ -25,7 +25,7 @@ class SkillGenerator {
   /// is used. An optional [httpClient] can be injected for testing.
   SkillGenerator({
     this.apiKey,
-    this.model = 'claude-sonnet-4-20250514',
+    this.model = 'claude-sonnet-4-6',
     Logger? logger,
     http.Client? httpClient,
     VerifierMode? verifierMode,

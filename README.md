@@ -386,7 +386,7 @@ flutter_skill_gen analyze --model sonnet
 flutter_skill_gen analyze --model opus
 
 # Pass a full model ID
-flutter_skill_gen analyze --model claude-sonnet-4-20250514
+flutter_skill_gen analyze --model claude-sonnet-4-6
 
 # Set a default model globally
 flutter_skill_gen config --set-model opus

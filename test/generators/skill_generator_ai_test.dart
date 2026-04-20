@@ -83,12 +83,12 @@ void main() {
 
       final gen = SkillGenerator(
         apiKey: 'sk-ant-test-key',
-        model: 'claude-opus-4-20250514',
+        model: 'claude-opus-4-7',
         httpClient: mockClient,
       );
 
       await gen.generate(_buildFacts());
-      expect(capturedBody['model'], 'claude-opus-4-20250514');
+      expect(capturedBody['model'], 'claude-opus-4-7');
     });
 
     test('sends system prompt and user message', () async {

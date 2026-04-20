@@ -8,7 +8,7 @@ class ClaudeClient {
   /// [model] override.
   ClaudeClient({
     required this.apiKey,
-    this.model = 'claude-sonnet-4-20250514',
+    this.model = 'claude-sonnet-4-6',
     http.Client? httpClient,
   }) : _http = httpClient ?? http.Client();
 

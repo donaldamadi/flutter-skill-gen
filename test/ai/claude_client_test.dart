@@ -29,7 +29,7 @@ void main() {
 
         final client = ClaudeClient(
           apiKey: 'sk-ant-test-key',
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           httpClient: mockClient,
         );
 
@@ -42,7 +42,7 @@ void main() {
         expect(capturedHeaders['x-api-key'], 'sk-ant-test-key');
         expect(capturedHeaders['anthropic-version'], '2023-06-01');
         expect(capturedHeaders['Content-Type'], 'application/json');
-        expect(capturedBody['model'], 'claude-sonnet-4-20250514');
+        expect(capturedBody['model'], 'claude-sonnet-4-6');
         expect(capturedBody['system'], 'You are a helpful assistant.');
         expect(capturedBody['max_tokens'], 8192);
 

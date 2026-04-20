@@ -118,17 +118,14 @@ void main() {
     });
 
     group('model default', () {
-      test('defaults to claude-sonnet-4-20250514', () {
+      test('defaults to claude-sonnet-4-6', () {
         final gen = SkillGenerator();
-        expect(gen.model, 'claude-sonnet-4-20250514');
+        expect(gen.model, 'claude-sonnet-4-6');
       });
 
       test('accepts custom model', () {
-        final gen = SkillGenerator(
-          apiKey: 'sk-test',
-          model: 'claude-opus-4-20250514',
-        );
-        expect(gen.model, 'claude-opus-4-20250514');
+        final gen = SkillGenerator(apiKey: 'sk-test', model: 'claude-opus-4-7');
+        expect(gen.model, 'claude-opus-4-7');
       });
     });
   });

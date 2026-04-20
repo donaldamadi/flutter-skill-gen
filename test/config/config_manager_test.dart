@@ -34,7 +34,7 @@ void main() {
     });
 
     test('model returns default when not configured', () {
-      expect(config.model, 'claude-sonnet-4-20250514');
+      expect(config.model, 'claude-sonnet-4-6');
     });
 
     test('configPath points to config.yaml in configDir', () {
@@ -74,24 +74,24 @@ void main() {
       test('preserves other config values', () {
         config
           ..setApiKey('sk-test')
-          ..setModel('claude-opus-4-20250514')
+          ..setModel('claude-opus-4-7')
           ..removeApiKey();
         expect(config.apiKey, isNull);
-        expect(config.model, 'claude-opus-4-20250514');
+        expect(config.model, 'claude-opus-4-7');
       });
     });
 
     group('setModel / model', () {
       test('stores and retrieves custom model', () {
-        config.setModel('claude-opus-4-20250514');
-        expect(config.model, 'claude-opus-4-20250514');
+        config.setModel('claude-opus-4-7');
+        expect(config.model, 'claude-opus-4-7');
       });
 
       test('persists across ConfigManager instances', () {
-        config.setModel('claude-opus-4-20250514');
+        config.setModel('claude-opus-4-7');
 
         final config2 = ConfigManager(configDir: tempDir.path);
-        expect(config2.model, 'claude-opus-4-20250514');
+        expect(config2.model, 'claude-opus-4-7');
       });
     });
 

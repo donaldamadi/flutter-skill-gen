@@ -67,13 +67,15 @@ class ConfigManager {
     _writeConfig(config);
   }
 
-  /// Default Claude model ID.
-  static const defaultModel = 'claude-sonnet-4-20250514';
+  /// Default Claude model ID. Matches the `sonnet` alias so `--model
+  /// sonnet`, an unset config, and a missing flag all resolve to the
+  /// same model.
+  static const defaultModel = 'claude-sonnet-4-6';
 
   /// Short aliases that map to full Claude model IDs.
   static const modelAliases = <String, String>{
-    'sonnet': 'claude-sonnet-4-20250514',
-    'opus': 'claude-opus-4-20250514',
+    'sonnet': 'claude-sonnet-4-6',
+    'opus': 'claude-opus-4-7',
   };
 
   /// Resolves a model alias (e.g. "opus") or full ID to the
