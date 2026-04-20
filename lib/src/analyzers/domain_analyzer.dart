@@ -64,18 +64,26 @@ class DomainAnalyzer {
         .map((f) => p.relative(f.path, from: projectPath))
         .toList();
 
+    final featurePath = p.relative(domainDir.path, from: projectPath);
     final layers = _detectLayers(domainDir);
     final stateClasses = _detectStateClasses(dartFiles);
     final entities = _detectEntities(dartFiles);
     final samples = _collectSamples(dartFiles);
+    final diFiles = _detectDiFiles(dartFiles);
+    final widgetUsageCounts = _countWidgetUsages(dartFiles);
+    final wrapperClasses = _detectWrapperClasses(dartFiles);
 
     return DomainFacts(
       domainName: domainName,
+      featurePath: featurePath,
       files: relativeFiles,
       samples: samples,
       layers: layers,
       stateClasses: stateClasses,
       entities: entities,
+      diFiles: diFiles,
+      widgetUsageCounts: widgetUsageCounts,
+      wrapperClasses: wrapperClasses,
     );
   }
 
@@ -271,6 +279,99 @@ class DomainAnalyzer {
     return lines.sublist(classStart, end).join('\n').trim();
   }
 
+  /// Detects files within this feature that perform DI registration.
+  ///
+  /// Uses two signals — a filename heuristic (e.g. `*_injection.dart`,
+  /// `*_module.dart`, `di.dart`) and a content heuristic (presence of
+  /// `registerSingleton`, `registerFactory`, `registerLazySingleton`,
+  /// `GetIt.I.register`, or `@module`). Returns paths relative to
+  /// [projectPath].
+  ///
+  /// An empty return value is a load-bearing fact: it tells the
+  /// evidence bundle that DI is NOT performed inside this feature.
+  List<String> _detectDiFiles(List<File> files) {
+    final diFiles = <String>[];
+    for (final file in files) {
+      final basename = p.basename(file.path).toLowerCase();
+      final isDiFilename =
+          basename.endsWith('_injection.dart') ||
+          basename.endsWith('_injection.config.dart') ||
+          basename.endsWith('_module.dart') ||
+          basename.endsWith('_di.dart') ||
+          basename == 'injection.dart' ||
+          basename == 'injection_container.dart' ||
+          basename == 'di.dart' ||
+          basename == 'module.dart';
+
+      var isDiFile = isDiFilename;
+      if (!isDiFile) {
+        final content = _readFileSafe(file);
+        if (content == null) continue;
+        isDiFile = _diContentSignals.any((re) => re.hasMatch(content));
+      }
+
+      if (isDiFile) {
+        diFiles.add(p.relative(file.path, from: projectPath));
+      }
+    }
+    return diFiles..sort();
+  }
+
+  /// Counts occurrences of well-known state-management widget
+  /// names inside this feature's Dart files.
+  ///
+  /// Returns a map with every tracked name as a key (zero counts
+  /// included) so the evidence bundle can make accurate "X of Y
+  /// features use Z" statements without ambiguity between "no
+  /// occurrences" and "not measured".
+  Map<String, int> _countWidgetUsages(List<File> files) {
+    final counts = <String, int>{
+      for (final name in _widgetPatterns.keys) name: 0,
+    };
+    for (final file in files) {
+      final content = _readFileSafe(file);
+      if (content == null) continue;
+      _widgetPatterns.forEach((name, re) {
+        counts[name] = counts[name]! + re.allMatches(content).length;
+      });
+    }
+    return counts;
+  }
+
+  /// Detects custom "wrapper" classes — classes whose name ends in
+  /// `Wrapper`, `View`, `Scaffold`, or `Shell` and that therefore
+  /// likely represent an indirection over a Flutter primitive.
+  ///
+  /// Intentionally coarse. The bundle consumer decides whether to
+  /// surface these as a convention.
+  List<String> _detectWrapperClasses(List<File> files) {
+    const suffixes = ['Wrapper', 'View', 'Scaffold', 'Shell'];
+    final wrappers = <String>{};
+
+    for (final file in files) {
+      final basename = p.basename(file.path).toLowerCase();
+      if (basename.endsWith('_test.dart')) continue;
+
+      final content = _readFileSafe(file);
+      if (content == null) continue;
+
+      for (final match in _classPattern.allMatches(content)) {
+        final className = match.group(1)!;
+        if (className.startsWith('_')) continue;
+        if (className.startsWith(r'$')) continue;
+
+        for (final suffix in suffixes) {
+          if (className.endsWith(suffix) && className.length > suffix.length) {
+            wrappers.add(className);
+            break;
+          }
+        }
+      }
+    }
+
+    return wrappers.toList()..sort();
+  }
+
   String? _readFileSafe(File file) {
     try {
       return file.readAsStringSync();
@@ -280,4 +381,29 @@ class DomainAnalyzer {
       return null;
     }
   }
+
+  /// Content-level signals that a Dart file registers dependencies.
+  static final List<RegExp> _diContentSignals = [
+    RegExp(r'\bregisterSingleton\b'),
+    RegExp(r'\bregisterFactory\b'),
+    RegExp(r'\bregisterLazySingleton\b'),
+    RegExp(r'GetIt\.I\.register'),
+    RegExp(r'\bgetIt\.register'),
+    RegExp(r'\bsl\.register'),
+    RegExp(r'@module\b'),
+  ];
+
+  /// Tracked widget-usage identifiers mapped to their detection regex.
+  /// Keys appear verbatim in emitted [DomainFacts.widgetUsageCounts].
+  static final Map<String, RegExp> _widgetPatterns = {
+    'BlocBuilder': RegExp(r'\bBlocBuilder<'),
+    'BlocListener': RegExp(r'\bBlocListener<'),
+    'BlocConsumer': RegExp(r'\bBlocConsumer<'),
+    'BlocSelector': RegExp(r'\bBlocSelector<'),
+    'BlocProvider': RegExp(r'\bBlocProvider<'),
+    'Consumer': RegExp(r'\bConsumer<'),
+    'ConsumerWidget': RegExp(r'\bConsumerWidget\b'),
+    'ConsumerStatefulWidget': RegExp(r'\bConsumerStatefulWidget\b'),
+    'HookConsumerWidget': RegExp(r'\bHookConsumerWidget\b'),
+  };
 }

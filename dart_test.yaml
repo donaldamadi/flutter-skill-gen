@@ -9,3 +9,4 @@ paths:
   - test/router/
   - test/scanner/
   - test/templates/
+  - test/verifier/

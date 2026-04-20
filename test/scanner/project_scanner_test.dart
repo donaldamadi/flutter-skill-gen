@@ -89,13 +89,90 @@ void main() {
 
       test('includes tool version and timestamp', () {
         final facts = scanner.scan()!;
-        expect(facts.toolVersion, '0.1.2');
+        expect(facts.toolVersion, '0.2.0');
         expect(facts.generatedAt, isNotEmpty);
       });
 
       test('conventions include code samples', () {
         final facts = scanner.scan()!;
         expect(facts.conventions.samples, isNotEmpty);
+      });
+
+      group('evidence bundle', () {
+        test('populates projectName and di style from patterns', () {
+          final facts = scanner.scan()!;
+          final evidence = facts.evidence!;
+          expect(evidence.projectName, 'sample_bloc_app');
+          expect(evidence.di.style, 'get_it_injectable');
+        });
+
+        test('emits one FeatureEvidence per detected feature', () {
+          final facts = scanner.scan()!;
+          final names = facts.evidence!.features.map((f) => f.name).toSet();
+          expect(names, containsAll(['auth', 'home', 'cart']));
+        });
+
+        test('auth records clean-arch layers and BlocBuilder usage', () {
+          final facts = scanner.scan()!;
+          final auth = facts.evidence!.features.firstWhere(
+            (f) => f.name == 'auth',
+          );
+          expect(
+            auth.layersPresent,
+            containsAll(['data', 'domain', 'presentation']),
+          );
+          expect(auth.layersAbsent, isEmpty);
+          expect(auth.widgetUsage['BlocBuilder'], greaterThanOrEqualTo(1));
+          expect(auth.path, 'lib/features/auth');
+        });
+
+        test('cart feature reports missing data/domain layers', () {
+          final facts = scanner.scan()!;
+          final cart = facts.evidence!.features.firstWhere(
+            (f) => f.name == 'cart',
+          );
+          expect(cart.layersPresent, ['presentation']);
+          expect(cart.layersAbsent, containsAll(['data', 'domain']));
+        });
+
+        test('detects centralized DI at lib/core/di/injection.dart', () {
+          final facts = scanner.scan()!;
+          expect(
+            facts.evidence!.di.registrationFiles,
+            contains('lib/core/di/injection.dart'),
+          );
+          // DI is centralized, not per-feature.
+          expect(facts.evidence!.di.perFeature, isFalse);
+        });
+
+        test('file manifest contains every lib/ dart file', () {
+          final facts = scanner.scan()!;
+          final paths = facts.evidence!.fileManifest.allFilePaths;
+          expect(paths, contains('lib/core/di/injection.dart'));
+          expect(
+            paths,
+            contains('lib/features/auth/presentation/bloc/auth_bloc.dart'),
+          );
+        });
+
+        test('class manifest includes AuthBloc', () {
+          final facts = scanner.scan()!;
+          expect(
+            facts.evidence!.fileManifest.allClassNames,
+            contains('AuthBloc'),
+          );
+        });
+
+        test('known file patterns reflect actual files', () {
+          final facts = scanner.scan()!;
+          final patterns = facts.evidence!.knownFilePatterns;
+          expect(patterns, contains('*_bloc.dart'));
+          expect(patterns, contains('*_state.dart'));
+          expect(patterns, contains('*_event.dart'));
+          expect(patterns, contains('*_page.dart'));
+          // No cubit files in this fixture.
+          expect(patterns, isNot(contains('*_cubit.dart')));
+        });
       });
     });
 
@@ -140,7 +217,9 @@ void main() {
       );
       final facts = scanner.scan()!;
 
-      final tmpDir = Directory.systemTemp.createTempSync('flutter_skill_gen_test_');
+      final tmpDir = Directory.systemTemp.createTempSync(
+        'flutter_skill_gen_test_',
+      );
       try {
         final outputPath = FactsWriter.write(facts, outputDir: tmpDir.path);
 
@@ -150,7 +229,7 @@ void main() {
         final content = file.readAsStringSync();
         final json = jsonDecode(content) as Map<String, dynamic>;
         expect(json['project_name'], 'sample_bloc_app');
-        expect(json['tool_version'], '0.1.2');
+        expect(json['tool_version'], '0.2.0');
         expect(json['dependencies'], isA<Map<String, dynamic>>());
         expect(json['structure'], isA<Map<String, dynamic>>());
         expect(json['patterns'], isA<Map<String, dynamic>>());

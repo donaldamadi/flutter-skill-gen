@@ -358,6 +358,81 @@ class StructureAnalyzer {
     return allLayers.toList()..sort();
   }
 
+  /// Returns per-feature layer information: for each feature in
+  /// [featureDirs], the resolved directory (as a path relative to
+  /// [projectPath]) and the subset of architectural layer names
+  /// present as immediate subdirectories.
+  ///
+  /// Features whose directory cannot be located are still included
+  /// in the result with an empty `layersPresent` list and a
+  /// best-effort `relativePath` of `lib/<featureName>`.
+  ///
+  /// Consumed by the evidence bundle builder to ground per-feature
+  /// claims (e.g. "data+domain+presentation on auth, presentation
+  /// only on cart") in verified filesystem facts.
+  Map<String, FeatureLayerInfo> analyzeFeatureBreakdown(
+    List<String> featureDirs,
+  ) {
+    final libDir = Directory(p.join(projectPath, 'lib'));
+    if (!libDir.existsSync()) return <String, FeatureLayerInfo>{};
+
+    final result = <String, FeatureLayerInfo>{};
+    for (final feature in featureDirs) {
+      final featureDir = _findFeatureDir(feature, libDir);
+      if (featureDir == null) {
+        result[feature] = FeatureLayerInfo(
+          relativePath: p.join('lib', feature),
+          layersPresent: const [],
+        );
+        continue;
+      }
+
+      final subdirs = FileUtils.listSubdirectories(featureDir);
+      final layers = subdirs.where((d) => _layerNames.contains(d)).toList()
+        ..sort();
+      result[feature] = FeatureLayerInfo(
+        relativePath: p.relative(featureDir.path, from: projectPath),
+        layersPresent: layers,
+      );
+    }
+
+    return result;
+  }
+
+  /// Resolves [featureName] to a directory using the same priority
+  /// order as [_detectFeatures] so callers get a consistent answer.
+  Directory? _findFeatureDir(String featureName, Directory libDir) {
+    const featureContainers = ['features', 'modules', 'feature', 'pages'];
+    for (final c in featureContainers) {
+      final dir = Directory(p.join(libDir.path, c, featureName));
+      if (dir.existsSync()) return dir;
+    }
+
+    const presentationSubs = [
+      'presentation/pages',
+      'presentation/features',
+      'presentation/screens',
+      'ui/pages',
+      'ui/features',
+      'ui/screens',
+    ];
+    for (final s in presentationSubs) {
+      final dir = Directory(p.join(libDir.path, s, featureName));
+      if (dir.existsSync()) return dir;
+    }
+
+    const direct = ['presentation', 'ui'];
+    for (final d in direct) {
+      final dir = Directory(p.join(libDir.path, d, featureName));
+      if (dir.existsSync()) return dir;
+    }
+
+    final top = Directory(p.join(libDir.path, featureName));
+    if (top.existsSync()) return top;
+
+    return null;
+  }
+
   /// Classifies the architecture based on which layers are present.
   String _classifyArchitecture(List<String> layers) {
     final layerSet = layers.toSet();
@@ -386,4 +461,26 @@ class _MonorepoInfo {
 
   final String? tool;
   final List<String> packages;
+}
+
+/// Per-feature layer information returned by
+/// [StructureAnalyzer.analyzeFeatureBreakdown].
+///
+/// Lightweight, transient — not JSON-serialized. The JSON-serializable
+/// counterpart used by the evidence bundle is `FeatureEvidence` in
+/// `../models/evidence_bundle.dart`.
+class FeatureLayerInfo {
+  /// Creates a [FeatureLayerInfo].
+  const FeatureLayerInfo({
+    required this.relativePath,
+    required this.layersPresent,
+  });
+
+  /// Path to the feature directory, relative to the project root
+  /// (e.g. `lib/features/auth`, `lib/ui/onboarding`).
+  final String relativePath;
+
+  /// Architectural layer subdirectories found directly inside the
+  /// feature (subset of [StructureAnalyzer]'s `_layerNames`).
+  final List<String> layersPresent;
 }

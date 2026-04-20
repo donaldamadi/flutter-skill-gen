@@ -25,6 +25,9 @@ ProjectFacts _$ProjectFactsFromJson(Map<String, dynamic> json) => ProjectFacts(
   complexity: json['complexity'] == null
       ? null
       : ComplexityInfo.fromJson(json['complexity'] as Map<String, dynamic>),
+  evidence: json['evidence'] == null
+      ? null
+      : EvidenceBundle.fromJson(json['evidence'] as Map<String, dynamic>),
   generatedAt: json['generated_at'] as String,
   toolVersion: json['tool_version'] as String,
 );
@@ -41,6 +44,7 @@ Map<String, dynamic> _$ProjectFactsToJson(ProjectFacts instance) =>
       'conventions': instance.conventions.toJson(),
       'testing': instance.testing?.toJson(),
       'complexity': instance.complexity?.toJson(),
+      'evidence': instance.evidence?.toJson(),
       'generated_at': instance.generatedAt,
       'tool_version': instance.toolVersion,
     };

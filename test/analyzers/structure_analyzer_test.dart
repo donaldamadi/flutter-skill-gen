@@ -88,5 +88,50 @@ void main() {
         expect(result.organization, 'unknown');
       });
     });
+
+    group('analyzeFeatureBreakdown', () {
+      test('returns clean-arch layers for feature-first bloc fixture', () {
+        final analyzer = StructureAnalyzer('test/fixtures/sample_bloc_project');
+        final breakdown = analyzer.analyzeFeatureBreakdown(const [
+          'auth',
+          'home',
+          'cart',
+        ]);
+
+        expect(breakdown['auth']!.relativePath, 'lib/features/auth');
+        expect(
+          breakdown['auth']!.layersPresent,
+          containsAll(['data', 'domain', 'presentation']),
+        );
+
+        expect(
+          breakdown['home']!.layersPresent,
+          containsAll(['data', 'domain', 'presentation']),
+        );
+
+        // cart has only presentation — this is the load-bearing
+        // assertion: layers absent on cart must NOT show up here.
+        expect(breakdown['cart']!.layersPresent, ['presentation']);
+      });
+
+      test('returns empty layers and best-effort path for missing feature', () {
+        final analyzer = StructureAnalyzer('test/fixtures/sample_bloc_project');
+        final breakdown = analyzer.analyzeFeatureBreakdown(const [
+          'nonexistent_feature',
+        ]);
+
+        expect(breakdown['nonexistent_feature']!.layersPresent, isEmpty);
+        expect(
+          breakdown['nonexistent_feature']!.relativePath,
+          'lib/nonexistent_feature',
+        );
+      });
+
+      test('returns empty map when lib/ does not exist', () {
+        final analyzer = StructureAnalyzer('/nonexistent');
+        final breakdown = analyzer.analyzeFeatureBreakdown(const ['auth']);
+        expect(breakdown, isEmpty);
+      });
+    });
   });
 }

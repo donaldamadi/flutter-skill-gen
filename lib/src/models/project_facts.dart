@@ -2,6 +2,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'convention_info.dart';
 import 'dependency_info.dart';
+import 'evidence_bundle.dart';
 import 'pattern_info.dart';
 import 'structure_info.dart';
 
@@ -26,6 +27,7 @@ class ProjectFacts {
     required this.conventions,
     this.testing,
     this.complexity,
+    this.evidence,
     required this.generatedAt,
     required this.toolVersion,
   });
@@ -67,6 +69,10 @@ class ProjectFacts {
 
   /// Project complexity metrics.
   final ComplexityInfo? complexity;
+
+  /// Verified evidence bundle used to ground AI-generated skill files.
+  /// Null for facts loaded from pre-0.2.0 JSON.
+  final EvidenceBundle? evidence;
 
   /// ISO 8601 timestamp when the facts were generated.
   @JsonKey(name: 'generated_at')

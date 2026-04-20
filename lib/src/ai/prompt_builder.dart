@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../models/domain_facts.dart';
+import '../models/evidence_bundle.dart';
 import '../models/project_facts.dart';
 
 /// Builds system and user prompts for the Claude API from
@@ -8,6 +9,52 @@ import '../models/project_facts.dart';
 /// high-quality SKILL.md files.
 class PromptBuilder {
   const PromptBuilder._();
+
+  /// Anti-hallucination instructions appended to every system prompt.
+  ///
+  /// Instructs Claude to treat the `evidence` block of the JSON payload
+  /// as the sole source of truth for file paths, class names, glob
+  /// patterns, and DI wiring. The post-generation `DraftVerifier` uses
+  /// the same evidence to reject or annotate unsupported claims, so
+  /// any drift here widens the gap between what the model emits and
+  /// what the verifier accepts.
+  static const groundingRules =
+      'CRITICAL — grounding rules (these override any pattern-matching '
+      'instinct from prior training):\n'
+      '\n'
+      'The JSON includes an `evidence` object. Treat it as the ONLY '
+      'source of truth for file paths, class names, file-name '
+      'patterns, and DI wiring. Do NOT import prior knowledge about '
+      '"what a typical Flutter project looks like."\n'
+      '\n'
+      '- Only mention file paths listed in '
+      '`evidence.file_manifest.all_file_paths`. If a path you would '
+      'otherwise reference is absent, describe the pattern abstractly '
+      '(e.g. "each feature\'s presentation layer") instead of citing '
+      'a specific path.\n'
+      '- Only reference class names that appear in '
+      '`evidence.file_manifest.all_class_names`. Do not invent '
+      'example classes like `LoginCubit` or `UserRepositoryImpl` '
+      'unless they are listed there.\n'
+      '- Only use glob patterns (e.g. `*_bloc.dart`) that appear in '
+      '`evidence.known_file_patterns`. If `*_cubit.dart` is not '
+      'listed, this project has no cubit files — do not claim it '
+      'does.\n'
+      '- `evidence.di.per_feature` is authoritative. If false, DI is '
+      'centralized — do NOT describe DI as "per-feature" or "each '
+      'feature has its own injection file". Instead, cite '
+      '`evidence.di.registration_files` for the actual registration '
+      'sites.\n'
+      '- For each feature, `layers_present` and `layers_absent` are '
+      'authoritative. If a feature\'s `layers_absent` contains '
+      '"domain", that feature does not have a domain layer — do not '
+      'invent one.\n'
+      '- `widget_usage` counts are authoritative. If `BlocBuilder` is '
+      '0 for a feature, that feature does not use `BlocBuilder` — '
+      'describe only widgets with non-zero counts.\n'
+      '- When in doubt, prefer the shorter, more cautious phrasing. '
+      'A verifier will strip or annotate any claim it cannot find in '
+      '`evidence`.\n';
 
   /// The system prompt that instructs Claude on the SKILL.md format.
   static const systemPrompt =
@@ -78,7 +125,9 @@ class PromptBuilder {
       'project-specific rules\n'
       '- Keep it under 2000 words\n'
       '- Output raw markdown only — no wrapping code fences\n'
-      '- Do NOT include YAML frontmatter — it is added automatically';
+      '- Do NOT include YAML frontmatter — it is added automatically\n'
+      '\n'
+      '$groundingRules';
 
   /// System prompt for the **core** skill file in split mode.
   ///
@@ -133,7 +182,9 @@ class PromptBuilder {
       '- Do NOT repeat the JSON back — synthesize it into prose\n'
       '- Keep it under 1500 words\n'
       '- Output raw markdown only — no wrapping code fences\n'
-      '- Do NOT include YAML frontmatter — it is added automatically';
+      '- Do NOT include YAML frontmatter — it is added automatically\n'
+      '\n'
+      '$groundingRules';
 
   /// System prompt for **domain-specific** skill files.
   static const domainSystemPrompt =
@@ -178,7 +229,9 @@ class PromptBuilder {
       'covers that\n'
       '- Keep it under 800 words\n'
       '- Output raw markdown only — no wrapping code fences\n'
-      '- Do NOT include YAML frontmatter — it is added automatically';
+      '- Do NOT include YAML frontmatter — it is added automatically\n'
+      '\n'
+      '$groundingRules';
 
   /// Builds the user message containing the project facts as JSON.
   static String buildUserMessage(ProjectFacts facts) {
@@ -202,6 +255,12 @@ class PromptBuilder {
   }
 
   /// Builds the user message for a **domain-specific** skill file.
+  ///
+  /// Includes (a) a compact project-wide summary, (b) a targeted
+  /// `evidence` slice containing only this feature's `FeatureEvidence`
+  /// plus the project-wide `file_manifest` and `di` blocks so the
+  /// domain prompt has the same grounding surface as the verifier,
+  /// and (c) the full [DomainFacts] JSON.
   static String buildDomainMessage(
     DomainFacts domainFacts,
     ProjectFacts projectFacts,
@@ -210,7 +269,6 @@ class PromptBuilder {
       '  ',
     ).convert(domainFacts.toJson());
 
-    // Provide a compact summary of project-wide context.
     final projectSummary = StringBuffer()
       ..writeln('Project: ${projectFacts.projectName}')
       ..writeln(
@@ -235,11 +293,47 @@ class PromptBuilder {
       )
       ..writeln('Organization: ${projectFacts.structure.organization}');
 
+    final evidenceBlock = _buildDomainEvidenceBlock(
+      domainFacts.domainName,
+      projectFacts,
+    );
+
     return 'Project-wide context:\n'
         '```\n$projectSummary```\n\n'
+        '$evidenceBlock'
         'Domain facts for "${domainFacts.domainName}":\n\n'
         '```json\n$domainJson\n```\n\n'
         'Generate the domain SKILL.md for the '
         '"${domainFacts.domainName}" feature.';
+  }
+
+  /// Produces the `Evidence (ground truth):` JSON block for a domain
+  /// prompt, or an empty string if the project facts predate the
+  /// evidence bundle.
+  static String _buildDomainEvidenceBlock(
+    String domainName,
+    ProjectFacts projectFacts,
+  ) {
+    final evidence = projectFacts.evidence;
+    if (evidence == null) return '';
+
+    FeatureEvidence? feature;
+    for (final f in evidence.features) {
+      if (f.name == domainName) {
+        feature = f;
+        break;
+      }
+    }
+
+    final slice = <String, dynamic>{
+      'project_name': evidence.projectName,
+      'di': evidence.di.toJson(),
+      'known_file_patterns': evidence.knownFilePatterns,
+      'file_manifest': evidence.fileManifest.toJson(),
+      if (feature != null) 'feature_evidence': feature.toJson(),
+    };
+    final sliceJson = const JsonEncoder.withIndent('  ').convert(slice);
+    return 'Evidence (ground truth — only reference files/classes '
+        'listed here):\n```json\n$sliceJson\n```\n\n';
   }
 }

@@ -3,9 +3,14 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../analyzers/code_sampler.dart';
+import '../analyzers/domain_analyzer.dart';
 import '../analyzers/pattern_detector.dart';
 import '../analyzers/pubspec_analyzer.dart';
 import '../analyzers/structure_analyzer.dart';
+import '../generators/evidence_bundle_builder.dart';
+import '../models/domain_facts.dart';
+import '../models/evidence_bundle.dart';
+import '../models/pattern_info.dart';
 import '../models/project_facts.dart';
 import '../models/structure_info.dart';
 import '../utils/file_utils.dart';
@@ -25,7 +30,7 @@ class ProjectScanner {
   final Logger logger;
 
   /// The tool version embedded in generated facts.
-  static const toolVersion = '0.1.2';
+  static const toolVersion = '0.2.0';
 
   /// Scans the project and returns a [ProjectFacts] instance.
   ///
@@ -49,10 +54,7 @@ class ProjectScanner {
           'Monorepo detected — scanning from: '
           '${p.basename(resolved)}',
         );
-        return ProjectScanner(
-          projectPath: resolved,
-          logger: logger,
-        ).scan();
+        return ProjectScanner(projectPath: resolved, logger: logger).scan();
       }
       logger.error('No pubspec.yaml found at: $projectPath');
       return null;
@@ -96,6 +98,16 @@ class ProjectScanner {
     logger.debug('Computing complexity...');
     final complexity = _computeComplexity(structure);
 
+    // Step 7: Build the evidence bundle — ground truth for AI
+    // generation and draft verification.
+    logger.debug('Building evidence bundle...');
+    final evidence = _buildEvidenceBundle(
+      projectName: pubspecAnalyzer.projectName,
+      structure: structure,
+      structureAnalyzer: structureAnalyzer,
+      patterns: patterns,
+    );
+
     return ProjectFacts(
       projectName: pubspecAnalyzer.projectName,
       projectDescription: pubspecAnalyzer.projectDescription,
@@ -107,10 +119,84 @@ class ProjectScanner {
       conventions: conventions,
       testing: testing,
       complexity: complexity,
+      evidence: evidence,
       generatedAt: DateTime.now().toUtc().toIso8601String(),
       toolVersion: toolVersion,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Evidence bundle
+  // ---------------------------------------------------------------------------
+
+  /// Runs [DomainAnalyzer] against every detected feature, collects
+  /// the lib/ file + class manifest, and assembles an [EvidenceBundle]
+  /// via [EvidenceBundleBuilder]. Coverage is exhaustive (not limited
+  /// to the split-mode recommendation) so the verifier has ground
+  /// truth for every feature regardless of output mode.
+  EvidenceBundle _buildEvidenceBundle({
+    required String projectName,
+    required StructureInfo structure,
+    required StructureAnalyzer structureAnalyzer,
+    required PatternInfo patterns,
+  }) {
+    final domainAnalyzer = DomainAnalyzer(projectPath);
+    final allDomainFacts = <DomainFacts>[
+      for (final feature in structure.featureDirs)
+        domainAnalyzer.analyze(feature, structure),
+    ];
+    final featureBreakdown = structureAnalyzer.analyzeFeatureBreakdown(
+      structure.featureDirs,
+    );
+    final manifest = _extractLibManifest();
+
+    return const EvidenceBundleBuilder().build(
+      projectName: projectName,
+      domainFacts: allDomainFacts,
+      featureBreakdown: featureBreakdown,
+      allFilePaths: manifest.filePaths,
+      allClassNames: manifest.classNames,
+      diStyle: patterns.di,
+    );
+  }
+
+  /// Walks `lib/` and returns the full set of relative file paths plus
+  /// every top-level class name declared within. Used as the verifier's
+  /// lookup table.
+  _LibManifest _extractLibManifest() {
+    final libDir = Directory(p.join(projectPath, 'lib'));
+    if (!libDir.existsSync()) {
+      return const _LibManifest(filePaths: [], classNames: []);
+    }
+
+    final dartFiles = FileUtils.collectDartFiles(libDir);
+    final filePaths = <String>[];
+    final classNames = <String>{};
+
+    for (final file in dartFiles) {
+      filePaths.add(p.relative(file.path, from: projectPath));
+      final content = _readFileSafe(file);
+      if (content == null) continue;
+      for (final match in _classDeclPattern.allMatches(content)) {
+        final name = match.group(1);
+        if (name == null) continue;
+        if (name.startsWith('_')) continue;
+        if (name.startsWith(r'$')) continue;
+        classNames.add(name);
+      }
+    }
+
+    filePaths.sort();
+    return _LibManifest(
+      filePaths: filePaths,
+      classNames: (classNames.toList()..sort()),
+    );
+  }
+
+  static final RegExp _classDeclPattern = RegExp(
+    r'(?:abstract\s+|sealed\s+|final\s+|base\s+|interface\s+|mixin\s+)?'
+    r'class\s+(\w+)',
+  );
 
   // ---------------------------------------------------------------------------
   // Testing analysis
@@ -307,4 +393,12 @@ class ProjectScanner {
       return null;
     }
   }
+}
+
+/// Internal result type for [ProjectScanner._extractLibManifest].
+class _LibManifest {
+  const _LibManifest({required this.filePaths, required this.classNames});
+
+  final List<String> filePaths;
+  final List<String> classNames;
 }

@@ -9,6 +9,7 @@ import '../models/domain_facts.dart';
 import '../models/project_facts.dart';
 import '../utils/logger.dart';
 import '../utils/skill_name.dart';
+import '../verifier/draft_verifier.dart';
 import 'split_planner.dart';
 import 'template_generator.dart';
 
@@ -27,8 +28,13 @@ class SkillGenerator {
     this.model = 'claude-sonnet-4-20250514',
     Logger? logger,
     http.Client? httpClient,
+    VerifierMode? verifierMode,
+    Map<String, String>? environment,
   }) : logger = logger ?? const Logger(),
-       _httpClient = httpClient;
+       _httpClient = httpClient,
+       verifierMode =
+           verifierMode ??
+           _resolveVerifierMode(environment ?? Platform.environment);
 
   /// Claude API key. `null` means template-only mode.
   final String? apiKey;
@@ -41,6 +47,24 @@ class SkillGenerator {
 
   /// Optional HTTP client for testing.
   final http.Client? _httpClient;
+
+  /// Mode used by [DraftVerifier] to reconcile AI drafts with the
+  /// grounded evidence bundle. Defaults to the value of the
+  /// `FLUTTER_SKILL_VERIFIER_MODE` env var (`annotate`, `strip`, or
+  /// `fatal`), or [VerifierMode.annotate] if the var is unset.
+  final VerifierMode verifierMode;
+
+  /// Name of the environment variable that overrides [verifierMode].
+  static const verifierModeEnvVar = 'FLUTTER_SKILL_VERIFIER_MODE';
+
+  static VerifierMode _resolveVerifierMode(Map<String, String> env) {
+    final raw = env[verifierModeEnvVar]?.trim().toLowerCase();
+    return switch (raw) {
+      'strip' => VerifierMode.strip,
+      'fatal' => VerifierMode.fatal,
+      _ => VerifierMode.annotate,
+    };
+  }
 
   /// Whether AI-powered generation is available.
   bool get hasAi => apiKey != null && apiKey!.isNotEmpty;
@@ -114,21 +138,12 @@ class SkillGenerator {
       String description;
 
       if (spec.isDomain && spec.domainFacts != null) {
-        skillName = SkillName.withSuffix(
-          facts.projectName,
-          spec.skillName,
-        );
-        description = _buildDomainDescription(
-          spec.domainFacts!,
-          facts,
-        );
+        skillName = SkillName.withSuffix(facts.projectName, spec.skillName);
+        description = _buildDomainDescription(spec.domainFacts!, facts);
         logger.info('Generating domain skill: ${spec.skillName}...');
         content = await generateDomain(spec.domainFacts!, facts);
       } else {
-        skillName = SkillName.withSuffix(
-          facts.projectName,
-          'core',
-        );
+        skillName = SkillName.withSuffix(facts.projectName, 'core');
         description = _buildCoreDescription(facts);
         if (plan.isSplit) {
           logger.info('Generating core skill...');
@@ -167,7 +182,7 @@ class SkillGenerator {
         userMessage: PromptBuilder.buildCoreMessage(facts),
       );
       logger.success('Core skill generation complete.');
-      return content;
+      return _verifyDraft(content, facts, label: 'core');
     } on ClaudeApiException catch (e) {
       logger.warn(
         'AI generation failed: $e\n'
@@ -203,7 +218,11 @@ class SkillGenerator {
         ),
       );
       logger.success('${domainFacts.domainName} skill generation complete.');
-      return content;
+      return _verifyDraft(
+        content,
+        projectFacts,
+        label: 'domain/${domainFacts.domainName}',
+      );
     } on ClaudeApiException catch (e) {
       logger.warn(
         'AI generation for ${domainFacts.domainName} failed: '
@@ -230,7 +249,7 @@ class SkillGenerator {
         userMessage: PromptBuilder.buildUserMessage(facts),
       );
       logger.success('AI generation complete.');
-      return content;
+      return _verifyDraft(content, facts);
     } on ClaudeApiException catch (e) {
       logger.warn(
         'AI generation failed: $e\n'
@@ -243,26 +262,60 @@ class SkillGenerator {
   }
 
   // -------------------------------------------------------------------
+  // Draft verification
+  // -------------------------------------------------------------------
+
+  /// Runs the [DraftVerifier] against [draft] using [verifierMode].
+  ///
+  /// Returns the (possibly transformed) content. Throws
+  /// [DraftVerificationFailedException] when the mode is `fatal` and
+  /// violations were found. No-ops when `facts.evidence` is null —
+  /// without a ground-truth bundle there is nothing to verify.
+  String _verifyDraft(String draft, ProjectFacts facts, {String? label}) {
+    final evidence = facts.evidence;
+    if (evidence == null) return draft;
+
+    final verifier = DraftVerifier(evidence: evidence, mode: verifierMode);
+    final result = verifier.verify(draft);
+    if (result.violations.isEmpty) return result.output;
+
+    final prefix = label == null ? 'Verifier' : 'Verifier ($label)';
+    final byKind = <ViolationKind, int>{};
+    for (final v in result.violations) {
+      byKind[v.kind] = (byKind[v.kind] ?? 0) + 1;
+    }
+    final summary = byKind.entries
+        .map((e) => '${e.value} ${e.key.name}')
+        .join(', ');
+    logger.warn(
+      '$prefix: ${result.violations.length} claim(s) unsupported '
+      'by evidence ($summary). Mode: ${verifierMode.name}.',
+    );
+
+    if (verifierMode == VerifierMode.fatal) {
+      throw DraftVerificationFailedException(result.violations);
+    }
+    return result.output;
+  }
+
+  // -------------------------------------------------------------------
   // Frontmatter description builders
   // -------------------------------------------------------------------
 
   String _buildDescription(ProjectFacts facts) {
-    final parts = <String>[
-      'Flutter project context for ${facts.projectName}',
-    ];
+    final parts = <String>['Flutter project context for ${facts.projectName}'];
     if (facts.patterns.architecture != null) {
       parts.add(facts.patterns.architecture!);
     }
     if (facts.patterns.stateManagement != null) {
-      parts.add(
-        '${facts.patterns.stateManagement} state management',
-      );
+      parts.add('${facts.patterns.stateManagement} state management');
     }
     return '${parts.join('. ')}.';
   }
 
   String _buildCoreDescription(ProjectFacts facts) {
-    final base = 'Core architecture, conventions, and '
+    final base =
+        'Core architecture, conventions, and '
         'dependencies for ${facts.projectName}';
     final parts = <String>[base];
     if (facts.patterns.architecture != null) {
@@ -271,15 +324,9 @@ class SkillGenerator {
     return '${parts.join('. ')}.';
   }
 
-  String _buildDomainDescription(
-    DomainFacts domain,
-    ProjectFacts facts,
-  ) {
-    final name = domain.domainName
-        .replaceAll('_', ' ')
-        .replaceAll('-', ' ');
-    final capitalized =
-        '${name[0].toUpperCase()}${name.substring(1)}';
+  String _buildDomainDescription(DomainFacts domain, ProjectFacts facts) {
+    final name = domain.domainName.replaceAll('_', ' ').replaceAll('-', ' ');
+    final capitalized = '${name[0].toUpperCase()}${name.substring(1)}';
     final base = '$capitalized feature in ${facts.projectName}';
     final parts = <String>[base];
     if (domain.layers.isNotEmpty) {

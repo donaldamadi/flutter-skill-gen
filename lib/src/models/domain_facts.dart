@@ -14,11 +14,15 @@ class DomainFacts {
   /// Creates a [DomainFacts] instance.
   const DomainFacts({
     required this.domainName,
+    this.featurePath,
     this.files = const [],
     this.samples = const [],
     this.layers = const [],
     this.stateClasses = const [],
     this.entities = const [],
+    this.diFiles = const [],
+    this.widgetUsageCounts = const {},
+    this.wrapperClasses = const [],
   });
 
   /// Creates a [DomainFacts] from JSON.
@@ -28,6 +32,12 @@ class DomainFacts {
   /// Name of this domain/feature (e.g. "auth", "home", "cart").
   @JsonKey(name: 'domain_name')
   final String domainName;
+
+  /// Relative path to the feature directory (e.g.
+  /// `lib/features/auth`). Null for legacy-loaded facts that predate
+  /// this field.
+  @JsonKey(name: 'feature_path')
+  final String? featurePath;
 
   /// Relative file paths belonging to this domain.
   final List<String> files;
@@ -45,6 +55,21 @@ class DomainFacts {
 
   /// Entity/model class names found in this domain.
   final List<String> entities;
+
+  /// Files inside this feature that perform DI registration.
+  /// Empty list means DI is NOT done per-feature here.
+  @JsonKey(name: 'di_files')
+  final List<String> diFiles;
+
+  /// Widget usage counts within this feature (e.g.
+  /// `{BlocBuilder: 0, BlocListener: 12, Consumer: 3}`).
+  @JsonKey(name: 'widget_usage_counts')
+  final Map<String, int> widgetUsageCounts;
+
+  /// Class names within this feature that look like indirection
+  /// wrappers (ending in `Wrapper`, `View`, etc.).
+  @JsonKey(name: 'wrapper_classes')
+  final List<String> wrapperClasses;
 
   /// Converts this instance to JSON.
   Map<String, dynamic> toJson() => _$DomainFactsToJson(this);
