@@ -13,8 +13,8 @@ class SkillName {
     var name = input
         .toLowerCase()
         .replaceAll('_', '-')
-        .replaceAll(RegExp(r'[^a-z0-9-]'), '')
-        .replaceAll(RegExp(r'-{2,}'), '-');
+        .replaceAll(RegExp('[^a-z0-9-]'), '')
+        .replaceAll(RegExp('-{2,}'), '-');
 
     // Trim leading/trailing hyphens.
     name = name.replaceAll(RegExp(r'^-+|-+$'), '');

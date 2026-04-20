@@ -8,7 +8,9 @@ void main() {
   late ConfigManager config;
 
   setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('flutter_skill_gen_config_test_');
+    tempDir = Directory.systemTemp.createTempSync(
+      'flutter_skill_gen_config_test_',
+    );
     config = ConfigManager(configDir: tempDir.path);
   });
 

@@ -85,10 +85,7 @@ class TemplateGenerator {
   ) {
     final buf = StringBuffer()
       ..writeln('# ${_humanize(domainFacts.domainName)} Domain')
-      ..writeln();
-
-    // Overview.
-    buf
+      ..writeln()
       ..writeln('## Overview')
       ..writeln()
       ..writeln(
@@ -103,8 +100,9 @@ class TemplateGenerator {
         ..writeln();
     }
 
-    buf.writeln('Files: ${domainFacts.files.length} Dart files');
-    buf.writeln();
+    buf
+      ..writeln('Files: ${domainFacts.files.length} Dart files')
+      ..writeln();
 
     // State classes.
     if (domainFacts.stateClasses.isNotEmpty) {
