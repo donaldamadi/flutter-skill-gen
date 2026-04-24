@@ -9,6 +9,7 @@ doc/api/
 .skill_facts.json
 .skill_manifest.yaml
 SKILL.md
+SKILL_*.md
 
 # Test / CI reports
 reports/

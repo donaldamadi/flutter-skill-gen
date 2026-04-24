@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+### Claude Code Best-Practice Alignment
+
+Generated skills now follow the patterns the Claude Code team has published for agentic engineering — lazy-loading, tight line budgets, gotchas, and data-flow diagrams. All changes are additive on the output side; existing AI and template paths still produce valid SKILL.md files.
+
+- **`paths:` frontmatter for lazy loading.** Every generated `SKILL.md` / `SKILL_<feature>.md` / `CLAUDE_<feature>.md` now emits a `paths:` YAML block so Claude Code only loads a skill when a file matching one of its globs is touched. The core skill is scoped to `pubspec.yaml`, `lib/main.dart`, and any `lib/core/`, `lib/shared/`, `lib/common/`, `lib/config/`, or `lib/app/` tree that actually exists; in single-file mode it also gets `lib/**/*.dart`. Per-feature skills get `lib/<feature-path>/**/*.dart` derived from the evidence bundle.
+- **Per-skill line budget.** All three system prompts (single, core, domain) now carry a hard line ceiling (180 / 150 / 120 lines respectively, with lower aim targets) replacing the old word budgets. `DraftVerifier` gained a new `ViolationKind.overLineBudget` that flags drafts over 200 lines — Claude Code's published degradation threshold. The new check is draft-level rather than line-scoped, so `annotate` / `strip` modes don't munge the file; the signal surfaces via the verifier warning log.
+- **Deterministic Gotchas + Data Flow sections.** Two new trusted-source modules, `GotchasLibrary` and `AsciiDiagrams`, emit a `## Gotchas` bullet list and a `## Data Flow` ASCII diagram for every skill. Rules are keyed by detected stack (bloc, riverpod, go_router, auto_route, get_it+injectable, freezed+hive pairs, clean-arch missing-layer, feature-first-no-shared, and more) and feature-scoped variants. Because both sections are generated from grounded detection — never from AI output — they bypass the hallucination surface and are spliced onto every draft after verification. The prompts now explicitly tell Claude *not* to write these sections.
+- **Description fields are loading triggers, not summaries.** The `description:` YAML field is what Claude Code matches against the current task to decide when to surface a skill. Previous descriptions read like human project summaries (`"Core architecture, conventions, and dependencies for <project>"`); 0.4.0 rewrites them as load-trigger clauses (`"Load when working in the Flutter + clean architecture + bloc app "<project>" — architecture, conventions, and project-specific rules."`). Domain skills get `"Load when editing the <feature> feature (<layers>) in <project>"`.
+- **No-boilerplate prompt discipline.** All three prompts now carry an explicit `Do NOT state the obvious` clause — no "this is a Flutter project", no generic BLoC/Riverpod/Clean Architecture primer content, only project-specific rules that would surprise a mid-level Flutter engineer who just cloned the repo.
+- **Split threshold lowered.** `_recommendSkillFiles` previously held single-file output up to 50 files / 3 features; with a 200-line skill budget that threshold produced overflow. The cut now sits at 30 files / 2 features, so medium projects split sooner and each file stays lean.
+
 ## 0.3.1
 
 ### Bug Fixes — Audit-Driven Accuracy

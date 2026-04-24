@@ -99,71 +99,66 @@ void main() {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
     });
 
-    test(
-      'forced split produces sibling SKILL_<feature>.md files, '
-      'not a single concatenated SKILL.md',
-      () async {
-        final scanner = ProjectScanner(
-          projectPath: 'test/fixtures/sample_bloc_project',
-          logger: const Logger(),
-        );
-        final facts = scanner.scan()!;
+    test('forced split produces sibling SKILL_<feature>.md files, '
+        'not a single concatenated SKILL.md', () async {
+      final scanner = ProjectScanner(
+        projectPath: 'test/fixtures/sample_bloc_project',
+        logger: const Logger(),
+      );
+      final facts = scanner.scan()!;
 
-        const planner = SplitPlanner();
-        final plan = planner.plan(
-          facts,
-          projectPath: 'test/fixtures/sample_bloc_project',
-          forceSplit: true,
-        );
-        expect(plan.isSplit, isTrue);
+      const planner = SplitPlanner();
+      final plan = planner.plan(
+        facts,
+        projectPath: 'test/fixtures/sample_bloc_project',
+        forceSplit: true,
+      );
+      expect(plan.isSplit, isTrue);
+      expect(plan.specs.map((s) => s.skillName), containsAll(['core', 'auth']));
+
+      final skillGen = SkillGenerator(logger: const Logger());
+      final skills = await skillGen.generateAll(plan, facts);
+
+      // Keys in the skills map must be the unprefixed scope names
+      // so multi-file writers produce clean `SKILL_<name>.md`
+      // filenames.
+      expect(skills.keys, contains('core'));
+      expect(skills.keys, contains('auth'));
+
+      // Default `generic` target.
+      const config = SkillrcConfig(
+        outputTargets: [OutputTarget(format: OutputFormat.generic)],
+      );
+      TargetWriter(
+        logger: const Logger(),
+      ).writeMultiSkill(skills, projectPath: tempDir.path, config: config);
+
+      final coreFile = File(p.join(tempDir.path, 'SKILL.md'));
+      expect(
+        coreFile.existsSync(),
+        isTrue,
+        reason: 'Core SKILL.md must be written to project root.',
+      );
+
+      for (final scope
+          in plan.specs
+              .where((s) => s.skillName != 'core')
+              .map((s) => s.skillName)) {
+        final featureFile = File(p.join(tempDir.path, 'SKILL_$scope.md'));
         expect(
-          plan.specs.map((s) => s.skillName),
-          containsAll(['core', 'auth']),
-        );
-
-        final skillGen = SkillGenerator(logger: const Logger());
-        final skills = await skillGen.generateAll(plan, facts);
-
-        // Keys in the skills map must be the unprefixed scope names
-        // so multi-file writers produce clean `SKILL_<name>.md`
-        // filenames.
-        expect(skills.keys, contains('core'));
-        expect(skills.keys, contains('auth'));
-
-        // Default `generic` target.
-        const config = SkillrcConfig(
-          outputTargets: [OutputTarget(format: OutputFormat.generic)],
-        );
-        TargetWriter(
-          logger: const Logger(),
-        ).writeMultiSkill(skills, projectPath: tempDir.path, config: config);
-
-        final coreFile = File(p.join(tempDir.path, 'SKILL.md'));
-        expect(
-          coreFile.existsSync(),
+          featureFile.existsSync(),
           isTrue,
-          reason: 'Core SKILL.md must be written to project root.',
+          reason:
+              'SKILL_$scope.md missing. The generic writer must '
+              'produce sibling files in split mode.',
         );
-
-        for (final scope in plan.specs
-            .where((s) => s.skillName != 'core')
-            .map((s) => s.skillName)) {
-          final featureFile = File(p.join(tempDir.path, 'SKILL_$scope.md'));
-          expect(
-            featureFile.existsSync(),
-            isTrue,
-            reason:
-                'SKILL_$scope.md missing. The generic writer must '
-                'produce sibling files in split mode.',
-          );
-          expect(
-            featureFile.readAsStringSync(),
-            contains('---'),
-            reason: 'SKILL_$scope.md must start with YAML frontmatter.',
-          );
-        }
-      },
-    );
+        expect(
+          featureFile.readAsStringSync(),
+          contains('---'),
+          reason: 'SKILL_$scope.md must start with YAML frontmatter.',
+        );
+      }
+    });
 
     test('claude_code target writes CLAUDE.md + CLAUDE_<feature>.md', () async {
       final scanner = ProjectScanner(
@@ -217,11 +212,7 @@ void main() {
           logger: const Logger(),
         ).writeMultiSkill(skills, projectPath: tempDir.path, config: config);
 
-        ManifestGenerator.write(
-          facts,
-          outputDir: tempDir.path,
-          plan: plan,
-        );
+        ManifestGenerator.write(facts, outputDir: tempDir.path, plan: plan);
 
         final manifestContent = File(
           p.join(tempDir.path, '.skill_manifest.yaml'),

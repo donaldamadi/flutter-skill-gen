@@ -36,15 +36,32 @@ class SkillName {
 
   /// Generates YAML frontmatter for a SKILL.md file following the
   /// Agent Skills specification.
+  ///
+  /// When [paths] is non-empty, the frontmatter includes a `paths:`
+  /// block — a Claude Code convention that scopes the skill so it is
+  /// only loaded when a file matching one of the patterns is touched.
+  /// Every entry is emitted as a single-quoted list item to keep YAML
+  /// parsers happy with glob characters like `*`.
   static String frontmatter({
     required String name,
     required String description,
+    List<String> paths = const [],
   }) {
     final escapedDesc = _yamlEscape(description);
-    return '---\n'
-        'name: $name\n'
-        'description: $escapedDesc\n'
-        '---\n\n';
+    final buf = StringBuffer()
+      ..writeln('---')
+      ..writeln('name: $name')
+      ..writeln('description: $escapedDesc');
+    if (paths.isNotEmpty) {
+      buf.writeln('paths:');
+      for (final path in paths) {
+        buf.writeln("  - '${path.replaceAll("'", r"\'")}'");
+      }
+    }
+    buf
+      ..writeln('---')
+      ..writeln();
+    return buf.toString();
   }
 
   static String _yamlEscape(String value) {

@@ -30,7 +30,7 @@ class ProjectScanner {
   final Logger logger;
 
   /// The tool version embedded in generated facts.
-  static const toolVersion = '0.3.1';
+  static const toolVersion = '0.4.0';
 
   /// Scans the project and returns a [ProjectFacts] instance.
   ///
@@ -322,20 +322,25 @@ class ProjectScanner {
     int features,
     StructureInfo structure,
   ) {
-    // Small projects: single skill file.
-    if (dartFiles <= 50 && features <= 3) return ['core'];
+    // Threshold is tuned for Claude Code's 200-line skill budget: a
+    // single SKILL.md stays under budget for compact projects, but
+    // above ~30 files or more than 2 features the prose gets squeezed.
+    // Splitting sooner keeps each file lean rather than forcing the
+    // core skill to summarize everything.
+    if (dartFiles <= 30 && features <= 2) return ['core'];
 
     final recommended = ['core'];
 
-    // Add feature-specific skills for large projects — include every detected
-    // feature. Earlier versions capped this at 5 which silently dropped
-    // subsequent features from both manifest and split planning.
-    if (features > 3) {
+    // Include every detected feature. Earlier versions capped this at
+    // 5 which silently dropped subsequent features from both manifest
+    // and split planning.
+    if (features > 2) {
       recommended.addAll(structure.featureDirs);
     }
 
-    // Always recommend data skill for projects with networking.
-    if (dartFiles > 50) {
+    // Recommend a dedicated data skill once the project has enough
+    // infrastructure to warrant its own discussion.
+    if (dartFiles > 30) {
       recommended.add('data');
     }
 

@@ -6,10 +6,13 @@ import 'package:path/path.dart' as p;
 import '../ai/claude_client.dart';
 import '../ai/prompt_builder.dart';
 import '../models/domain_facts.dart';
+import '../models/evidence_bundle.dart';
 import '../models/project_facts.dart';
 import '../utils/logger.dart';
 import '../utils/skill_name.dart';
 import '../verifier/draft_verifier.dart';
+import 'ascii_diagrams.dart';
+import 'gotchas_library.dart';
 import 'split_planner.dart';
 import 'template_generator.dart';
 
@@ -74,11 +77,17 @@ class SkillGenerator {
   ///
   /// Returns the generated markdown string.
   Future<String> generate(ProjectFacts facts) async {
-    final content = await _generateContent(facts);
+    final aiContent = await _generateContent(facts);
+    final body = _spliceDeterministicSections(
+      aiContent,
+      diagram: AsciiDiagrams.forProject(facts),
+      gotchas: GotchasLibrary.renderSection(GotchasLibrary.forProject(facts)),
+    );
     final name = SkillName.normalize(facts.projectName);
     final description = _buildDescription(facts);
-    return '${SkillName.frontmatter(name: name, description: description)}'
-        '$content';
+    final paths = _pathsForCore(facts);
+    return '${SkillName.frontmatter(name: name, description: description, paths: paths)}'
+        '$body';
   }
 
   /// Generates raw skill content without frontmatter.
@@ -140,6 +149,7 @@ class SkillGenerator {
       String content;
       String frontmatterName;
       String description;
+      List<String> paths;
 
       if (spec.isDomain && spec.domainFacts != null) {
         frontmatterName = SkillName.withSuffix(
@@ -147,22 +157,45 @@ class SkillGenerator {
           spec.skillName,
         );
         description = _buildDomainDescription(spec.domainFacts!, facts);
+        final featureEvidence = _featureEvidenceFor(spec.skillName, facts);
+        paths = _pathsForDomain(spec.domainFacts!, facts, featureEvidence);
         logger.info('Generating domain skill: ${spec.skillName}...');
-        content = await generateDomain(spec.domainFacts!, facts);
+        final aiContent = await generateDomain(spec.domainFacts!, facts);
+        content = _spliceDeterministicSections(
+          aiContent,
+          diagram: featureEvidence == null
+              ? ''
+              : AsciiDiagrams.forFeature(featureEvidence, facts),
+          gotchas: featureEvidence == null
+              ? ''
+              : GotchasLibrary.renderSection(
+                  GotchasLibrary.forFeature(featureEvidence, facts),
+                ),
+        );
       } else {
         frontmatterName = SkillName.withSuffix(facts.projectName, 'core');
         description = _buildCoreDescription(facts);
+        paths = _pathsForCore(facts, isSplit: plan.isSplit);
+        String aiContent;
         if (plan.isSplit) {
           logger.info('Generating core skill...');
-          content = await _generateCoreWithAi(facts);
+          aiContent = await _generateCoreWithAi(facts);
         } else {
-          content = await _generateContent(facts);
+          aiContent = await _generateContent(facts);
         }
+        content = _spliceDeterministicSections(
+          aiContent,
+          diagram: AsciiDiagrams.forProject(facts),
+          gotchas: GotchasLibrary.renderSection(
+            GotchasLibrary.forProject(facts),
+          ),
+        );
       }
 
       final frontmatter = SkillName.frontmatter(
         name: frontmatterName,
         description: description,
+        paths: paths,
       );
       results[spec.skillName] = '$frontmatter$content';
     }
@@ -307,38 +340,137 @@ class SkillGenerator {
 
   // -------------------------------------------------------------------
   // Frontmatter description builders
+  //
+  // The `description:` field is a loading trigger, not a human
+  // summary — Claude Code reads it to decide *when* to surface the
+  // skill. We phrase each one as a short "load when …" clause so the
+  // model has something concrete to match against the current task.
   // -------------------------------------------------------------------
 
   String _buildDescription(ProjectFacts facts) {
-    final parts = <String>['Flutter project context for ${facts.projectName}'];
-    if (facts.patterns.architecture != null) {
-      parts.add(facts.patterns.architecture!);
-    }
-    if (facts.patterns.stateManagement != null) {
-      parts.add('${facts.patterns.stateManagement} state management');
-    }
-    return '${parts.join('. ')}.';
+    final stack = _stackPhrase(facts);
+    return 'Load when working in the $stack app '
+        '"${facts.projectName}" — architecture, conventions, and '
+        'project-specific rules.';
   }
 
   String _buildCoreDescription(ProjectFacts facts) {
-    final base =
-        'Core architecture, conventions, and '
-        'dependencies for ${facts.projectName}';
-    final parts = <String>[base];
-    if (facts.patterns.architecture != null) {
-      parts.add(facts.patterns.architecture!);
-    }
-    return '${parts.join('. ')}.';
+    final stack = _stackPhrase(facts);
+    return 'Load for any cross-cutting task in the $stack app '
+        '"${facts.projectName}" — architecture, DI, routing, '
+        'codegen, or shared conventions. Feature-specific work '
+        'loads the matching feature skill.';
   }
 
   String _buildDomainDescription(DomainFacts domain, ProjectFacts facts) {
-    final name = domain.domainName.replaceAll('_', ' ').replaceAll('-', ' ');
-    final capitalized = '${name[0].toUpperCase()}${name.substring(1)}';
-    final base = '$capitalized feature in ${facts.projectName}';
-    final parts = <String>[base];
-    if (domain.layers.isNotEmpty) {
-      parts.add('layers: ${domain.layers.join(', ')}');
+    final name = _humanizeScope(domain.domainName);
+    final layers = domain.layers.isEmpty ? '' : ' (${domain.layers.join('/')})';
+    return 'Load when editing the "$name" feature$layers '
+        'in ${facts.projectName} — feature-specific classes, data '
+        'flow, and gotchas.';
+  }
+
+  String _stackPhrase(ProjectFacts facts) {
+    final parts = <String>[];
+    if (facts.patterns.architecture != null) {
+      parts.add(facts.patterns.architecture!.replaceAll('_', ' '));
     }
-    return '${parts.join('. ')}.';
+    if (facts.patterns.stateManagement != null) {
+      parts.add('${facts.patterns.stateManagement}');
+    }
+    if (parts.isEmpty) return 'Flutter';
+    return 'Flutter + ${parts.join(' + ')}';
+  }
+
+  String _humanizeScope(String scope) {
+    final normalized = scope.replaceAll('_', ' ').replaceAll('-', ' ');
+    if (normalized.isEmpty) return scope;
+    return '${normalized[0].toUpperCase()}${normalized.substring(1)}';
+  }
+
+  // -------------------------------------------------------------------
+  // Path computation (Claude Code `paths:` frontmatter)
+  //
+  // Skills with a `paths:` block are lazy-loaded only when a matching
+  // file is touched. Scoping the core skill to cross-cutting paths
+  // and each feature skill to its own directory keeps context budgets
+  // low without having to pre-read every skill.
+  // -------------------------------------------------------------------
+
+  List<String> _pathsForCore(ProjectFacts facts, {bool isSplit = false}) {
+    final paths = <String>{'pubspec.yaml', 'lib/main.dart'};
+    const sharedRoots = ['core', 'shared', 'common', 'config', 'app'];
+    for (final dir in facts.structure.topLevelDirs) {
+      if (sharedRoots.contains(dir)) {
+        paths.add('lib/$dir/**/*.dart');
+      }
+    }
+    // When not split, the core skill covers everything.
+    if (!isSplit) {
+      paths.add('lib/**/*.dart');
+    }
+    return paths.toList();
+  }
+
+  List<String> _pathsForDomain(
+    DomainFacts domain,
+    ProjectFacts facts,
+    FeatureEvidence? featureEvidence,
+  ) {
+    final featurePath = featureEvidence?.path ?? _guessFeaturePath(domain);
+    if (featurePath.isEmpty) return const [];
+    return ['$featurePath/**/*.dart'];
+  }
+
+  String _guessFeaturePath(DomainFacts domain) {
+    if (domain.files.isEmpty) return '';
+    // The domain's first file starts with its resolved root path; the
+    // evidence's `feature.path` is more reliable but falls back to
+    // this when the bundle is absent.
+    final first = domain.files.first.replaceAll(r'\\', '/');
+    // Trim off the trailing file to get the directory root. This is
+    // coarse but only runs when FeatureEvidence is missing.
+    final slash = first.lastIndexOf('/');
+    return slash > 0 ? first.substring(0, slash) : '';
+  }
+
+  FeatureEvidence? _featureEvidenceFor(String scope, ProjectFacts facts) {
+    final bundle = facts.evidence;
+    if (bundle == null) return null;
+    for (final f in bundle.features) {
+      if (f.name == scope) return f;
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------
+  // Deterministic section splicing
+  //
+  // Gotchas and data-flow diagrams are generated from trusted sources
+  // (the GotchasLibrary and AsciiDiagrams modules), never from AI
+  // output, so they skip the verifier and get appended to whatever
+  // the model produced. This keeps the high-signal content in every
+  // skill even when the AI path fails or the user runs template-only.
+  // -------------------------------------------------------------------
+
+  String _spliceDeterministicSections(
+    String aiContent, {
+    required String diagram,
+    required String gotchas,
+  }) {
+    final body = aiContent.trimRight();
+    final buf = StringBuffer()..write(body);
+    if (diagram.isNotEmpty) {
+      buf
+        ..writeln()
+        ..writeln()
+        ..write(diagram);
+    }
+    if (gotchas.isNotEmpty) {
+      buf
+        ..writeln()
+        ..write(gotchas);
+    }
+    return buf.toString();
   }
 }

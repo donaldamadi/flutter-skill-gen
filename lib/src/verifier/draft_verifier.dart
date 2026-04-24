@@ -33,6 +33,12 @@ enum ViolationKind {
   /// A prose claim that DI is registered per-feature, contradicted by
   /// evidence of centralized DI.
   falseDiPerFeatureClaim,
+
+  /// The draft exceeds the Claude Code skill line budget. This is a
+  /// soft signal — annotating or stripping does not trim the file, it
+  /// just surfaces that the model went long so the caller can log it
+  /// (or tighten the prompt).
+  overLineBudget,
 }
 
 /// One mismatch between a draft claim and the evidence bundle.
@@ -87,6 +93,7 @@ class DraftVerifier {
   const DraftVerifier({
     required this.evidence,
     this.mode = VerifierMode.annotate,
+    this.lineBudget = defaultLineBudget,
   });
 
   /// The project's grounded evidence — treated as the source of truth.
@@ -94,6 +101,17 @@ class DraftVerifier {
 
   /// How to handle violations (see [VerifierMode]).
   final VerifierMode mode;
+
+  /// Soft ceiling on draft length. Drafts longer than this raise an
+  /// [ViolationKind.overLineBudget] violation; the draft itself is
+  /// not trimmed. Matches Claude Code's published guidance that skill
+  /// adherence degrades past 200 lines.
+  final int lineBudget;
+
+  /// Default value of [lineBudget]. Chosen from Claude Code's public
+  /// guidance: 200 is the hard ceiling at which skill adherence
+  /// measurably drops.
+  static const defaultLineBudget = 200;
 
   /// Glob patterns that are universally valid Dart project conventions
   /// (tests, mocks, codegen output) and therefore not flagged even
@@ -117,15 +135,22 @@ class DraftVerifier {
           ..._verifyGlobPatterns(draft),
           ..._verifyClassNames(draft),
           ..._verifyDiPerFeatureClaims(draft),
+          ..._verifyLineBudget(draft),
         ]..sort((a, b) {
           final byLine = a.lineNumber.compareTo(b.lineNumber);
           return byLine != 0 ? byLine : a.claim.compareTo(b.claim);
         });
 
+    // Line-budget violations are draft-level — they apply to the
+    // whole file, not any single line. Don't feed them to the
+    // line-oriented strippers/annotators.
+    final lineScoped = violations
+        .where((v) => v.kind != ViolationKind.overLineBudget)
+        .toList();
     final output = switch (mode) {
       VerifierMode.fatal => draft,
-      VerifierMode.strip => _stripLines(draft, violations),
-      VerifierMode.annotate => _annotateLines(draft, violations),
+      VerifierMode.strip => _stripLines(draft, lineScoped),
+      VerifierMode.annotate => _annotateLines(draft, lineScoped),
     };
 
     return VerificationResult(output: output, violations: violations);
@@ -174,6 +199,28 @@ class DraftVerifier {
             line: c.line,
             lineNumber: c.lineNumber,
           ),
+    ];
+  }
+
+  /// Raises a single violation when [draft] exceeds [lineBudget].
+  /// Returns an empty list otherwise. The violation's `lineNumber`
+  /// points at the first line over budget so `annotate` mode's
+  /// dedup-by-line still works cleanly even though we intentionally
+  /// keep this violation out of the line-oriented transformers.
+  List<Violation> _verifyLineBudget(String draft) {
+    final lines = draft.split('\n');
+    if (lines.length <= lineBudget) return const [];
+    return [
+      Violation(
+        kind: ViolationKind.overLineBudget,
+        claim: '${lines.length} lines',
+        reason:
+            'draft is ${lines.length} lines; Claude Code skills '
+            'degrade past $lineBudget. Tighten prose or split into '
+            'more domain skills.',
+        line: lines[lineBudget],
+        lineNumber: lineBudget + 1,
+      ),
     ];
   }
 

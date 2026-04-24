@@ -36,7 +36,7 @@ void main() {
       test('instructs output format', () {
         const prompt = PromptBuilder.systemPrompt;
         expect(prompt, contains('raw markdown'));
-        expect(prompt, contains('under 2000 words'));
+        expect(prompt, contains('line budget'));
       });
     });
 
