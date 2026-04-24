@@ -1,0 +1,18 @@
+name: sample_layer_first_app
+description: Layer-first fixture with features directly under lib/ui/ (moneypal pattern).
+version: 1.0.0
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.0
+  hooks_riverpod: ^0.5.1
+  flutter_hooks: ^0.20.0
+  dio: ^5.4.0
+
+dev_dependencies:
+  mocktail: ^1.0.0

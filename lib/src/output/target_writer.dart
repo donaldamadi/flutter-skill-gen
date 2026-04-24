@@ -143,7 +143,7 @@ class TargetWriter {
         // Core-only: write just the core skill.
         final coreContent = skills.entries
             .firstWhere(
-              (e) => e.key.endsWith('-core') || e.key == 'core',
+              (e) => e.key == 'core',
               orElse: () => skills.entries.first,
             )
             .value;

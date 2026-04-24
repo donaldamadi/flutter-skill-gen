@@ -98,11 +98,8 @@ class SyncCommand extends Command<int> {
     final factsPath = FactsWriter.write(facts, outputDir: projectPath);
     logger.success('Updated $factsPath');
 
-    // Regenerate manifest.
-    final manifestPath = ManifestGenerator.write(facts, outputDir: projectPath);
-    logger.success('Updated $manifestPath');
-
-    // Plan and generate skill files.
+    // Plan before writing the manifest — the manifest references
+    // only the skill files the plan will actually produce.
     final config = ConfigManager();
     final modelFlag = results.option('model');
     final model = modelFlag != null
@@ -121,6 +118,14 @@ class SyncCommand extends Command<int> {
       projectPath: projectPath,
       forceSplit: splitFlag,
     );
+
+    // Regenerate manifest, grounded in the plan.
+    final manifestPath = ManifestGenerator.write(
+      facts,
+      outputDir: projectPath,
+      plan: plan,
+    );
+    logger.success('Updated $manifestPath');
 
     // Write to all configured output targets.
     final skillrc = Skillrc(projectPath: projectPath);

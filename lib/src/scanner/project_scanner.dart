@@ -30,7 +30,7 @@ class ProjectScanner {
   final Logger logger;
 
   /// The tool version embedded in generated facts.
-  static const toolVersion = '0.2.1';
+  static const toolVersion = '0.3.0';
 
   /// Scans the project and returns a [ProjectFacts] instance.
   ///
@@ -141,13 +141,17 @@ class ProjectScanner {
     required PatternInfo patterns,
   }) {
     final domainAnalyzer = DomainAnalyzer(projectPath);
-    final allDomainFacts = <DomainFacts>[
-      for (final feature in structure.featureDirs)
-        domainAnalyzer.analyze(feature, structure),
-    ];
     final featureBreakdown = structureAnalyzer.analyzeFeatureBreakdown(
       structure.featureDirs,
     );
+    final allDomainFacts = <DomainFacts>[
+      for (final feature in structure.featureDirs)
+        domainAnalyzer.analyze(
+          feature,
+          structure,
+          resolvedPath: featureBreakdown[feature]?.relativePath,
+        ),
+    ];
     final manifest = _extractLibManifest();
 
     return const EvidenceBundleBuilder().build(

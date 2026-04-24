@@ -46,7 +46,9 @@ class SplitPlanner {
   /// Produces a [SkillPlan] from [facts].
   ///
   /// - If [forceSplit] is `false`, always returns a single-spec plan.
-  /// - If [forceSplit] is `true`, forces split mode.
+  /// - If [forceSplit] is `true`, forces split mode over every
+  ///   detected feature directory (regardless of the complexity
+  ///   threshold that drives `recommendedSkillFiles`).
   /// - If [forceSplit] is `null` (default), auto-detects based on the
   ///   `recommendedSkillFiles` in [facts].
   SkillPlan plan(
@@ -64,11 +66,20 @@ class SplitPlanner {
       );
     }
 
-    // Build domain-scoped facts for each recommended domain.
+    // When the user forces split mode, expand to every detected
+    // feature — `recommendedSkillFiles` intentionally caps at the
+    // first 5 for auto-detect, but an explicit `--split` should
+    // honor the full feature set.
+    final domains = <String>{...recommended};
+    if (forceSplit ?? false) {
+      domains.addAll(facts.structure.featureDirs);
+    }
+
+    // Build domain-scoped facts for each domain.
     final domainAnalyzer = DomainAnalyzer(projectPath);
     final specs = <SkillSpec>[const SkillSpec(skillName: 'core')];
 
-    for (final domain in recommended) {
+    for (final domain in domains) {
       if (domain == 'core') continue;
 
       final domainFacts = domainAnalyzer.analyze(domain, facts.structure);

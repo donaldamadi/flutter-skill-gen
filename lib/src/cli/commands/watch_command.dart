@@ -162,7 +162,6 @@ class WatchCommand extends Command<int> {
     }
 
     FactsWriter.write(facts, outputDir: projectPath);
-    ManifestGenerator.write(facts, outputDir: projectPath);
 
     // Log detected domains from changed files.
     if (changedFiles.isNotEmpty) {
@@ -172,7 +171,8 @@ class WatchCommand extends Command<int> {
       }
     }
 
-    // Plan and generate skill files.
+    // Plan before the manifest so it references only skills that
+    // will actually be written.
     final configManager = ConfigManager();
     final skillGen = SkillGenerator(
       apiKey: configManager.apiKey,
@@ -182,6 +182,8 @@ class WatchCommand extends Command<int> {
 
     const planner = SplitPlanner();
     final plan = planner.plan(facts, projectPath: projectPath);
+
+    ManifestGenerator.write(facts, outputDir: projectPath, plan: plan);
 
     final targetWriter = TargetWriter(logger: logger);
 

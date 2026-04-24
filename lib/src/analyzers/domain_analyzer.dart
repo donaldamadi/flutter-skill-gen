@@ -52,9 +52,19 @@ class DomainAnalyzer {
   /// Analyzes the given [domainName] and returns [DomainFacts].
   ///
   /// The [structure] is used to locate the domain's directory based
-  /// on the project's organization pattern.
-  DomainFacts analyze(String domainName, StructureInfo structure) {
-    final domainDir = _findDomainDirectory(domainName, structure);
+  /// on the project's organization pattern. When [resolvedPath] is
+  /// provided (relative to the project root), the analyzer uses it
+  /// directly and skips its own directory lookup — this is the
+  /// preferred path from `ProjectScanner`, which pre-resolves feature
+  /// directories via `StructureAnalyzer.analyzeFeatureBreakdown`.
+  DomainFacts analyze(
+    String domainName,
+    StructureInfo structure, {
+    String? resolvedPath,
+  }) {
+    final domainDir = resolvedPath != null
+        ? Directory(p.join(projectPath, resolvedPath))
+        : _findDomainDirectory(domainName, structure);
     if (domainDir == null || !domainDir.existsSync()) {
       return DomainFacts(domainName: domainName);
     }
@@ -115,6 +125,16 @@ class DomainAnalyzer {
     ];
     for (final sub in presentationSubContainers) {
       final dir = Directory(p.join(libDir, sub, domainName));
+      if (dir.existsSync()) return dir;
+    }
+
+    // Features directly under `presentation/` or `ui/` (no intermediate
+    // pages/features/screens layer). Mirrors
+    // `StructureAnalyzer._findFeatureDir` to keep feature detection and
+    // per-feature analysis in lockstep.
+    const directLayerContainers = ['presentation', 'ui'];
+    for (final layer in directLayerContainers) {
+      final dir = Directory(p.join(libDir, layer, domainName));
       if (dir.existsSync()) return dir;
     }
 

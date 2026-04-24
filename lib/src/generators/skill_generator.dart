@@ -123,9 +123,13 @@ class SkillGenerator {
 
   /// Generates all skill files described in [plan].
   ///
-  /// Returns a map of `skillName → content` where each skill name
-  /// is Agent Skills spec-compliant and each value includes YAML
-  /// frontmatter.
+  /// Returns a map of `scopeKey → content` where each key is the
+  /// unprefixed skill scope (`core`, `auth`, `home`, …) and each value
+  /// includes Agent-Skills-compliant YAML frontmatter whose `name`
+  /// field is prefixed with the project name. Using the unprefixed
+  /// scope as the map key lets multi-file writers produce clean output
+  /// filenames (`SKILL_auth.md`) that match what `ManifestGenerator`
+  /// promises.
   Future<Map<String, String>> generateAll(
     SkillPlan plan,
     ProjectFacts facts,
@@ -134,16 +138,19 @@ class SkillGenerator {
 
     for (final spec in plan.specs) {
       String content;
-      String skillName;
+      String frontmatterName;
       String description;
 
       if (spec.isDomain && spec.domainFacts != null) {
-        skillName = SkillName.withSuffix(facts.projectName, spec.skillName);
+        frontmatterName = SkillName.withSuffix(
+          facts.projectName,
+          spec.skillName,
+        );
         description = _buildDomainDescription(spec.domainFacts!, facts);
         logger.info('Generating domain skill: ${spec.skillName}...');
         content = await generateDomain(spec.domainFacts!, facts);
       } else {
-        skillName = SkillName.withSuffix(facts.projectName, 'core');
+        frontmatterName = SkillName.withSuffix(facts.projectName, 'core');
         description = _buildCoreDescription(facts);
         if (plan.isSplit) {
           logger.info('Generating core skill...');
@@ -154,10 +161,10 @@ class SkillGenerator {
       }
 
       final frontmatter = SkillName.frontmatter(
-        name: skillName,
+        name: frontmatterName,
         description: description,
       );
-      results[skillName] = '$frontmatter$content';
+      results[spec.skillName] = '$frontmatter$content';
     }
 
     return results;

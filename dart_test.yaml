@@ -6,6 +6,7 @@ paths:
   - test/config/
   - test/generators/
   - test/output/
+  - test/regression/
   - test/router/
   - test/scanner/
   - test/templates/

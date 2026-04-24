@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+### Bug Fixes — Multi-File Output & Per-Feature Evidence
+
+Two regressions surfaced by a real-world audit of a complex Riverpod app using this package:
+
+- **Per-feature evidence was empty in layer-first projects.** `feature_evidence[].file_count` was `0` under every feature in `.skill_facts.json` when features sat directly under `lib/ui/<feature>` (or `lib/presentation/<feature>`) with no intermediate `pages/`, `features/`, or `screens/` container. Root cause: `DomainAnalyzer._findDomainDirectory` was missing the direct-layer-container tier that `StructureAnalyzer._findFeatureDir` gained in 0.1.2. `ProjectScanner` now threads the already-resolved feature path from `StructureAnalyzer.analyzeFeatureBreakdown` into `DomainAnalyzer.analyze(..., resolvedPath: ...)`, and the analyzer's own lookup also mirrors the structure analyzer's full priority order as belt-and-suspenders.
+- **Split mode generated one concatenated SKILL.md, not per-feature files.** The default `generic` and `claude_code` writers had `supportsMultiFile=false`, so `TargetWriter.writeMultiSkill` concatenated every skill into a single file while `ManifestGenerator` simultaneously promised `SKILL_<feature>.md` siblings that never landed on disk. Both writers now `supportsMultiFile=true` and produce `SKILL_<feature>.md` / `CLAUDE_<feature>.md` siblings at the project root — matching the layout the manifest already advertises.
+- **Forced split now expands to every detected feature.** `SplitPlanner.plan(..., forceSplit: true)` previously only iterated `recommendedSkillFiles` (which caps at 5 features and skips the "core-only" threshold). Explicit `--split` now unions in `structure.featureDirs` so small-but-multi-feature projects produce one skill per feature as expected.
+- **Manifest is grounded in the plan.** `ManifestGenerator.write(..., plan: plan)` (wired into `analyze`, `sync`, and `watch`) references only the skill files the plan will actually produce, eliminating the phantom `SKILL_data.md`-style entries when a recommended domain turns out to have no `lib/` directory.
+
+Regression tests in `test/regression/multi_file_and_evidence_test.dart` lock in both fixes, and a new `sample_layer_first_project` fixture exercises the moneypal-style `lib/ui/<feature>` pattern end-to-end.
+
 ## 0.2.1
 
 ### Model Defaults

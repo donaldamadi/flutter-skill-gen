@@ -119,8 +119,13 @@ class AnalyzeCommand extends Command<int> {
       forceSplit: splitFlag,
     );
 
-    // Generate manifest.
-    final manifestPath = ManifestGenerator.write(facts, outputDir: outputDir);
+    // Generate manifest — grounded in the plan so it only references
+    // skill files that will actually be written to disk.
+    final manifestPath = ManifestGenerator.write(
+      facts,
+      outputDir: outputDir,
+      plan: plan,
+    );
     logger.success('Generated $manifestPath');
 
     // Write to all configured output targets.
