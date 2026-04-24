@@ -233,8 +233,11 @@ class PubspecAnalyzer {
       classify(dep);
     }
 
-    // Classify dev deps — only into code_generation or testing.
-    // Everything else is silently skipped (lints, build tools, etc.).
+    // Classify dev deps — route generator/testing helpers into their
+    // dedicated buckets, and mirror everything (minus `flutter` itself)
+    // into `devDependencies` so dev-only packages like `flutter_lints`
+    // survive into the generated skill.
+    final devDependencies = <String>[];
     for (final dep in devDeps) {
       if (dep == 'flutter' || dep == 'flutter_localizations') {
         continue;
@@ -244,8 +247,7 @@ class PubspecAnalyzer {
       } else if (_testingPackages.contains(dep)) {
         if (!testing.contains(dep)) testing.add(dep);
       }
-      // Dev-only packages like flutter_lints are intentionally
-      // excluded from the "other" list.
+      if (!devDependencies.contains(dep)) devDependencies.add(dep);
     }
 
     return DependencyInfo(
@@ -257,6 +259,7 @@ class PubspecAnalyzer {
       codeGeneration: codeGeneration,
       testing: testing,
       other: other,
+      devDependencies: devDependencies,
     );
   }
 }

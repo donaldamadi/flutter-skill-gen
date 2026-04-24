@@ -30,7 +30,7 @@ class ProjectScanner {
   final Logger logger;
 
   /// The tool version embedded in generated facts.
-  static const toolVersion = '0.3.0';
+  static const toolVersion = '0.3.1';
 
   /// Scans the project and returns a [ProjectFacts] instance.
   ///
@@ -228,6 +228,8 @@ class ProjectScanner {
         final content = _readFileSafe(file);
         if (content == null) continue;
 
+        if (_isStockCounterWidgetTest(file, content)) continue;
+
         if (content.contains('testWidgets(') ||
             content.contains('pumpWidget(')) {
           hasWidgetTests = true;
@@ -325,9 +327,11 @@ class ProjectScanner {
 
     final recommended = ['core'];
 
-    // Add feature-specific skills for large projects.
+    // Add feature-specific skills for large projects — include every detected
+    // feature. Earlier versions capped this at 5 which silently dropped
+    // subsequent features from both manifest and split planning.
     if (features > 3) {
-      recommended.addAll(structure.featureDirs.take(5));
+      recommended.addAll(structure.featureDirs);
     }
 
     // Always recommend data skill for projects with networking.
@@ -396,6 +400,23 @@ class ProjectScanner {
     } on FileSystemException {
       return null;
     }
+  }
+
+  /// Detects the `flutter create`-generated `test/widget_test.dart` stub that
+  /// asserts on a counter increment. Projects that never replaced this file
+  /// should not be reported as having real widget tests.
+  bool _isStockCounterWidgetTest(File file, String content) {
+    if (p.basename(file.path) != 'widget_test.dart') return false;
+    // The stock template is tightly scoped: it references the generated MyApp,
+    // taps a '+' icon, and expects a counter to transition from 0 to 1.
+    final hasMyAppRef = content.contains('MyApp(');
+    final hasIncrementTap =
+        content.contains('Icons.add') ||
+        content.contains('find.byIcon(Icons.add)');
+    final hasCounterAssertion =
+        content.contains("find.text('0')") &&
+        content.contains("find.text('1')");
+    return hasMyAppRef && hasIncrementTap && hasCounterAssertion;
   }
 }
 

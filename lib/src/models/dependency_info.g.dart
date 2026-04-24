@@ -41,6 +41,11 @@ DependencyInfo _$DependencyInfoFromJson(
   other:
       (json['other'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const [],
+  devDependencies:
+      (json['dev_dependencies'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const [],
 );
 
 Map<String, dynamic> _$DependencyInfoToJson(DependencyInfo instance) =>
@@ -53,4 +58,5 @@ Map<String, dynamic> _$DependencyInfoToJson(DependencyInfo instance) =>
       'code_generation': instance.codeGeneration,
       'testing': instance.testing,
       'other': instance.other,
+      'dev_dependencies': instance.devDependencies,
     };

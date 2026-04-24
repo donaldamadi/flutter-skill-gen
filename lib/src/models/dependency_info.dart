@@ -15,6 +15,7 @@ class DependencyInfo {
     this.codeGeneration = const [],
     this.testing = const [],
     this.other = const [],
+    this.devDependencies = const [],
   });
 
   /// Creates a [DependencyInfo] from JSON.
@@ -47,6 +48,12 @@ class DependencyInfo {
 
   /// All other dependencies not fitting the above categories.
   final List<String> other;
+
+  /// Raw list of every entry in `dev_dependencies` (minus `flutter` itself).
+  /// Preserved so dev-only packages like `flutter_lints` show up in generated
+  /// skill files without being forced into the runtime "other" bucket.
+  @JsonKey(name: 'dev_dependencies')
+  final List<String> devDependencies;
 
   /// Converts this instance to JSON.
   Map<String, dynamic> toJson() => _$DependencyInfoToJson(this);

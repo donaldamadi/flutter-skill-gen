@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1
+
+### Bug Fixes — Audit-Driven Accuracy
+
+Three issues surfaced by a real-world `tng_laws_ai_mobile` audit against 0.3.0:
+
+- **Feature cap silently dropped beyond the first 5.** `_recommendSkillFiles` was doing `structure.featureDirs.take(5)`, so any project with more than five features had its 6th+ feature quietly omitted from both `recommended_skill_files` and the split plan. Projects like moneypal and tng_laws_ai_mobile were missing `profile`, `onboarding`, `shared`, and `navigation` skills even though the features were correctly detected. The cap is gone — every detected feature now produces a per-feature skill.
+- **Dev dependencies were silently dropped.** `PubspecAnalyzer.analyzeDependencies` only routed dev deps into `code_generation` / `testing` buckets and discarded everything else (`flutter_lints`, `flutter_launcher_icons`, `flutter_native_splash`, etc.), so generated skill files had no signal that a project was, for instance, using stock Flutter lints. `DependencyInfo` now carries a new `dev_dependencies` list (exposed in `.skill_facts.json` as `dev_dependencies`) that preserves every dev dep minus `flutter` / `flutter_localizations`.
+- **Stock `flutter create` widget test was counted as real coverage.** `_analyzeTests` flagged `hasWidgetTests=true` whenever any file contained `testWidgets(` or `pumpWidget(` — including the untouched `test/widget_test.dart` counter-increment stub that ships with `flutter create`. The scanner now recognizes the stock template (references `MyApp(`, taps `Icons.add`, asserts the `'0'` → `'1'` transition) and excludes it from the widget-test signal.
+
 ## 0.3.0
 
 ### Bug Fixes — Multi-File Output & Per-Feature Evidence
