@@ -14,6 +14,7 @@ import '../../output/target_writer.dart';
 import '../../router/skill_router.dart';
 import '../../scanner/project_scanner.dart';
 import '../../utils/logger.dart';
+import '../provider_options.dart';
 
 /// CLI command that watches a Flutter project for file changes
 /// and regenerates skill files on each change (with debounce).
@@ -40,10 +41,11 @@ class WatchCommand extends Command<int> {
         'model',
         abbr: 'm',
         help:
-            'Claude model for AI generation. '
-            'Shortcuts: "sonnet", "opus". '
+            'Model for AI generation. '
+            'Shortcuts (Anthropic only): "sonnet", "opus". '
             'Or pass a full model ID.',
       );
+    addProviderOptions(argParser);
   }
 
   @override
@@ -84,15 +86,18 @@ class WatchCommand extends Command<int> {
       ..info('Output targets: $targets')
       ..info('Press Ctrl+C to stop.\n');
 
-    // Resolve model from CLI flag or global config.
-    final modelFlag = results.option('model');
+    // Resolve provider and model from CLI flags or global config.
     final globalConfig = ConfigManager();
-    final model = modelFlag != null
-        ? ConfigManager.resolveModel(modelFlag)
-        : globalConfig.model;
+    final ResolvedProvider resolved;
+    try {
+      resolved = resolveProvider(results, globalConfig);
+    } on UnknownProviderException catch (e) {
+      logger.error(e.toString());
+      return 1;
+    }
 
     // Initial generation.
-    await _regenerate(projectPath, config, const [], logger, model);
+    await _regenerate(projectPath, config, const [], logger, resolved);
 
     // Track recently changed files for domain detection.
     final recentChanges = <String>[];
@@ -113,7 +118,7 @@ class WatchCommand extends Command<int> {
                 config,
                 List.of(recentChanges),
                 logger,
-                model,
+                resolved,
               );
               recentChanges.clear();
             });
@@ -134,7 +139,13 @@ class WatchCommand extends Command<int> {
 
       debounceTimer?.cancel();
       debounceTimer = Timer(Duration(milliseconds: debounceMs), () {
-        _regenerate(projectPath, config, List.of(recentChanges), logger, model);
+        _regenerate(
+          projectPath,
+          config,
+          List.of(recentChanges),
+          logger,
+          resolved,
+        );
         recentChanges.clear();
       });
     }
@@ -149,7 +160,7 @@ class WatchCommand extends Command<int> {
     SkillrcConfig config,
     List<String> changedFiles,
     Logger logger,
-    String model,
+    ResolvedProvider resolved,
   ) async {
     logger.info('Change detected — regenerating...');
 
@@ -173,10 +184,11 @@ class WatchCommand extends Command<int> {
 
     // Plan before the manifest so it references only skills that
     // will actually be written.
-    final configManager = ConfigManager();
     final skillGen = SkillGenerator(
-      apiKey: configManager.apiKey,
-      model: model,
+      apiKey: resolved.apiKey,
+      model: resolved.model,
+      provider: resolved.provider,
+      baseUrl: resolved.baseUrl,
       logger: logger,
     );
 

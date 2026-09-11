@@ -30,6 +30,7 @@ The generated skill file is written in the format your AI assistant expects, so 
 **For existing projects**, flutter_skill_gen detects and documents *what your project already uses* — whether that's BLoC, Riverpod, Provider, GetX, MobX, or any other approach. It never imposes a different architecture or state management style.
 
 **For new projects**, you can scaffold from built-in templates:
+
 - **Clean Architecture + BLoC** (`--arch clean_bloc`)
 - **Clean Architecture + Riverpod** (`--arch clean_riverpod`)
 
@@ -43,8 +44,8 @@ Or clone any GitHub repository as a starting point with `--from-repo`.
 - **Watch mode** — regenerates skill files on every file change with configurable debounce
 - **Project scaffolding** — create new Flutter projects from built-in Clean Architecture templates
 - **Git hooks & CI** — install pre-commit hooks and generate GitHub Actions workflows
-- **AI-powered generation** — optionally uses Claude API for richer, more contextual skill files
-- **Model selection** — choose between Claude Sonnet and Opus for AI generation
+- **AI-powered generation** — optionally uses an LLM API for richer, more contextual skill files
+- **Multi-provider** — Anthropic, any OpenAI-compatible endpoint (OpenAI, DeepSeek, Groq, Together, OpenRouter, Ollama, vLLM), or Google Gemini
 - **Agent Skills spec** — generated files include [spec-compliant](https://agentskills.io/specification) YAML frontmatter, compatible with the `skills` ecosystem
 
 ## Installation
@@ -81,13 +82,18 @@ dart run flutter_skill_gen <command>
 ## Quick Start
 
 ```bash
-# 1. Set your Claude API key (optional — enables AI-powered generation)
-flutter_skill_gen config --set-key sk-ant-xxxxx
-
-# 2. Analyze your project
+# 1. Analyze your project
 flutter_skill_gen analyze
 
-# 3. That's it — SKILL.md is ready for your AI assistant
+# 2. That's it — SKILL.md is ready for your AI assistant
+```
+
+That works with no setup at all. To get richer, AI-written skill files, add an
+API key — see [AI Providers](#ai-providers):
+
+```bash
+flutter_skill_gen config --set-key sk-ant-xxxxx
+flutter_skill_gen analyze
 ```
 
 ## Configuration
@@ -96,26 +102,14 @@ flutter_skill_gen uses two configuration layers:
 
 ### Global config (`~/.flutter_skill_gen/config.yaml`)
 
-Stores your API key and default model preference.
+Your AI provider, API keys, and default model — shared across every project.
 
 ```bash
-# Set your Claude API key
-flutter_skill_gen config --set-key sk-ant-xxxxx
-
-# Set default model (sonnet or opus)
-flutter_skill_gen config --set-model opus
-
 # View current configuration
 flutter_skill_gen config --show
 ```
 
-You can also set the API key via environment variable:
-
-```bash
-export FLUTTER_SKILL_API_KEY=sk-ant-xxxxx
-```
-
-The environment variable takes priority over the config file.
+See [AI Providers](#ai-providers) for what goes in here and how to set it.
 
 ### Project config (`.skillrc.yaml`)
 
@@ -146,6 +140,158 @@ watch:
   debounce_ms: 500
 ```
 
+## AI Providers
+
+Skill generation works with or without an AI provider. **Without a key** the tool
+builds skill files from the facts it scanned — no setup, no cost. **With a key**
+it also asks a model to write richer prose around those facts.
+
+Three providers are supported:
+
+| `--provider` | Service | Get a key from | Environment variable |
+| --- | --- | --- | --- |
+| `anthropic` *(default)* | Claude | [console.anthropic.com](https://console.anthropic.com/settings/keys) | `ANTHROPIC_API_KEY` |
+| `openai` | OpenAI + compatible services | [platform.openai.com](https://platform.openai.com/api-keys) | `OPENAI_API_KEY` |
+| `gemini` | Google Gemini | [aistudio.google.com](https://aistudio.google.com/apikey) | `GEMINI_API_KEY` |
+
+Keys are **not interchangeable** — each one only works with the service that
+issued it. An OpenAI key sent to Anthropic returns a `401`.
+
+### Setting up
+
+Pass `--set-provider` and `--set-key` together so the key is stored against the
+right provider:
+
+```bash
+flutter_skill_gen config --set-provider anthropic --set-key sk-ant-xxxxx
+flutter_skill_gen analyze
+```
+
+Keys are kept **per provider**, so adding a second one never overwrites the
+first:
+
+```yaml
+# ~/.flutter_skill_gen/config.yaml
+provider: anthropic
+model: claude-sonnet-5
+api_keys:
+  anthropic: sk-ant-xxxxx
+  openai: sk-proj-xxxxx
+```
+
+Switching between providers you have already set up needs no key:
+
+```bash
+flutter_skill_gen config --set-provider openai
+```
+
+Check what is active at any time with `flutter_skill_gen config --show`. The
+`api_key` line shows the key that will actually be used.
+
+### Using OpenAI-compatible services
+
+`--provider openai` works with any service that speaks OpenAI's API shape. Point
+it at one with `--base-url`:
+
+```bash
+# DeepSeek
+flutter_skill_gen analyze \
+  --provider openai \
+  --base-url https://api.deepseek.com/v1 \
+  --model deepseek-chat
+
+# A local Ollama server (the key is unused, but must be set to something)
+flutter_skill_gen analyze \
+  --provider openai \
+  --base-url http://localhost:11434/v1 \
+  --model qwen2.5-coder
+```
+
+Common base URLs:
+
+| Service | Base URL |
+| --- | --- |
+| OpenAI | *(default — omit `--base-url`)* |
+| DeepSeek | `https://api.deepseek.com/v1` |
+| Groq | `https://api.groq.com/openai/v1` |
+| Together | `https://api.together.xyz/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Ollama (local) | `http://localhost:11434/v1` |
+
+These all share the one `openai` key slot, so storing a DeepSeek key replaces a
+stored OpenAI key. If you switch between two of them often, keep one in
+`OPENAI_API_KEY` and store the other.
+
+`--provider` accepts aliases so the command reads naturally:
+`deepseek`, `groq`, `together`, `fireworks`, `openrouter`, `ollama`, and
+`openai-compatible` all mean `openai`; `claude` means `anthropic`; `google` means
+`gemini`.
+
+### Choosing a model
+
+```bash
+# Claude shortcuts
+flutter_skill_gen analyze --model sonnet
+flutter_skill_gen analyze --model opus
+
+# Any full model ID
+flutter_skill_gen analyze --provider gemini --model gemini-3.8-flash
+
+# Set a default
+flutter_skill_gen config --set-model opus
+```
+
+Each provider has its own default, used when you don't specify one:
+
+| Provider | Default model |
+| --- | --- |
+| `anthropic` | `claude-sonnet-5` |
+| `openai` | `gpt-5.6-sol` |
+| `gemini` | `gemini-3.8-flash` |
+
+Two things worth knowing:
+
+- The `sonnet` and `opus` shortcuts name Claude models, so they only expand under
+  `anthropic`. Any other provider receives the value unchanged.
+- OpenAI and Google rename and retire model IDs often. Set `--model` explicitly
+  for those two rather than relying on the defaults above.
+
+### Where keys are read from
+
+For the active provider, the first of these that is set wins:
+
+1. `FLUTTER_SKILL_API_KEY` — wins for every provider, handy in CI
+2. That provider's own variable — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`
+3. `api_keys.<provider>` in `~/.flutter_skill_gen/config.yaml`
+
+An already-exported key therefore just works:
+
+```bash
+export OPENAI_API_KEY=sk-proj-xxxxx
+flutter_skill_gen analyze --provider openai
+```
+
+> **Upgrading from an earlier version?** Reading the provider variables in step 2
+> is new. If your shell already exports one, the tool will start using it — where
+> an unconfigured install used to produce template output, it now makes real,
+> billable API calls. Run `config --show` to see which key is active.
+>
+> Configs using the older single `api_key:` field still work unchanged, as a
+> final fallback after the three sources above. Nothing needs migrating.
+
+### When generation fails
+
+A failed API call is never fatal. Any error — wrong key, unknown model, no
+network — logs a warning and falls back to template-based output, so you always
+get a skill file.
+
+| Message | Usual cause |
+| --- | --- |
+| `API returned 401` | The key belongs to a different provider, or an environment variable is overriding your stored key. Check `config --show`. |
+| `API returned 404` | The model ID isn't valid for this provider. |
+| Generated with no API call | No key was found for the active provider. |
+| Calls going to the wrong host | A stored `base_url` persists across provider switches. Clear it with `config --set-base-url ""`. |
+
 ## Commands
 
 ### `analyze`
@@ -171,7 +317,7 @@ flutter_skill_gen analyze --split
 # Force single file even for large projects
 flutter_skill_gen analyze --no-split
 
-# Use Claude Opus for higher quality generation
+# Use a more capable model for higher quality generation
 flutter_skill_gen analyze --model opus
 
 # Enable verbose logging
@@ -181,7 +327,7 @@ flutter_skill_gen analyze --verbose
 **Generated files:**
 
 | File | Description |
-|---|---|
+| --- | --- |
 | `.skill_facts.json` | Raw project analysis data (architecture, dependencies, patterns) |
 | `SKILL.md` | The skill file your AI assistant reads (format depends on output targets) |
 | `.skill_manifest.yaml` | Machine-readable manifest of detected facts |
@@ -260,7 +406,7 @@ flutter_skill_gen init --arch clean_bloc --model opus
 **Built-in templates:**
 
 | Template | Description |
-|---|---|
+| --- | --- |
 | `clean_bloc` | Clean Architecture with BLoC state management |
 | `clean_riverpod` | Clean Architecture with Riverpod state management |
 
@@ -271,13 +417,19 @@ When using `--from-repo`, the tool clones the repository (shallow, depth 1), rem
 Manages global and project-level configuration.
 
 ```bash
-# Set Claude API key
+# Set the API key for the active provider
 flutter_skill_gen config --set-key sk-ant-xxxxx
 
-# Set default Claude model
+# Set default model
 flutter_skill_gen config --set-model opus
 
-# Remove stored API key
+# Switch provider (anthropic, openai, gemini)
+flutter_skill_gen config --set-provider openai
+
+# Point an OpenAI-compatible provider at its own host
+flutter_skill_gen config --set-base-url https://api.deepseek.com/v1
+
+# Remove the active provider's stored API key
 flutter_skill_gen config --remove-key
 
 # Initialize .skillrc.yaml with defaults
@@ -328,7 +480,7 @@ The GitHub Actions workflow runs skill sync on push to `main`, ensuring skill fi
 Configure output targets in `.skillrc.yaml` to write skill files in the format your AI assistant expects.
 
 | Format | Output Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `generic` | `SKILL.md` | Universal format, works with any tool |
 | `claude_code` | `CLAUDE.md` | Optimized for Claude Code |
 | `cursor` | `.cursorrules` | Cursor AI rules file |
@@ -374,38 +526,12 @@ If you're a package author, you can use flutter_skill_gen to auto-generate skill
 
 flutter_skill_gen is the **authoring tool** — it generates the skills. Distribution tools like the `skills` CLI handle installation into IDEs.
 
-## Model Selection
-
-flutter_skill_gen supports Claude model selection for AI-powered generation.
-
-```bash
-# Use Claude Sonnet (default — fast and cost-effective)
-flutter_skill_gen analyze --model sonnet
-
-# Use Claude Opus (more detailed and nuanced output)
-flutter_skill_gen analyze --model opus
-
-# Pass a full model ID
-flutter_skill_gen analyze --model claude-sonnet-4-6
-
-# Set a default model globally
-flutter_skill_gen config --set-model opus
-```
-
-**Model priority chain:**
-
-1. `--model` CLI flag (highest priority)
-2. Global config (`~/.flutter_skill_gen/config.yaml`)
-3. Built-in default: Claude Sonnet
-
-If no API key is configured, flutter_skill_gen falls back to a template-based generator that produces skill files without an API call.
-
 ## What Gets Detected
 
 flutter_skill_gen performs deep analysis of your Flutter project:
 
 | Category | Examples |
-|---|---|
+| --- | --- |
 | **Architecture** | Clean Architecture, MVVM, MVC, layer-first, feature-first |
 | **State Management** | BLoC, Cubit, Riverpod, Provider, GetX, MobX, Redux, ValueNotifier |
 | **Navigation** | go_router, auto_route, Navigator 2.0, beamer |
@@ -421,7 +547,7 @@ flutter_skill_gen performs deep analysis of your Flutter project:
 ## How It Works
 
 1. **Static Scanner** reads the project and extracts structured facts into `.skill_facts.json`
-2. **AI Synthesis** (optional) prompts Claude to generate rich, human-readable skill content
+2. **AI Synthesis** (optional) prompts the configured provider to generate rich, human-readable skill content
 3. **Template Fallback** produces skill files from raw facts when no API key is available
 4. **Split Planner** determines whether to generate a single skill file or split into core + domain files based on project complexity
 5. **Target Writer** writes to every configured AI tool's native format simultaneously
@@ -430,7 +556,7 @@ flutter_skill_gen performs deep analysis of your Flutter project:
 
 Running `flutter_skill_gen analyze` on a medium-sized Clean Architecture project:
 
-```
+```text
 Analyzing Flutter project at: /path/to/my_app
 Generated .skill_facts.json
 Generated .skill_manifest.yaml

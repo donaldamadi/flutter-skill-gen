@@ -29,7 +29,7 @@ void main() {
 
         final client = ClaudeClient(
           apiKey: 'sk-ant-test-key',
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-5',
           httpClient: mockClient,
         );
 
@@ -42,9 +42,9 @@ void main() {
         expect(capturedHeaders['x-api-key'], 'sk-ant-test-key');
         expect(capturedHeaders['anthropic-version'], '2023-06-01');
         expect(capturedHeaders['Content-Type'], 'application/json');
-        expect(capturedBody['model'], 'claude-sonnet-4-6');
+        expect(capturedBody['model'], 'claude-sonnet-5');
         expect(capturedBody['system'], 'You are a helpful assistant.');
-        expect(capturedBody['max_tokens'], 8192);
+        expect(capturedBody['max_tokens'], 16000);
 
         final messages = capturedBody['messages'] as List<dynamic>;
         expect(messages, hasLength(1));
@@ -75,6 +75,114 @@ void main() {
         );
 
         expect(result, '# My Project\n\nGenerated content.');
+
+        client.close();
+      });
+
+      test('skips thinking blocks and returns the text block', () async {
+        final mockClient = http_testing.MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'stop_reason': 'end_turn',
+              'content': [
+                {'type': 'thinking', 'thinking': '', 'signature': 'abc'},
+                {'type': 'text', 'text': '# My Project'},
+              ],
+            }),
+            200,
+          ),
+        );
+
+        final client = ClaudeClient(apiKey: 'sk-test', httpClient: mockClient);
+
+        final result = await client.complete(
+          systemPrompt: 'system',
+          userMessage: 'user',
+        );
+
+        expect(result, '# My Project');
+
+        client.close();
+      });
+
+      test('concatenates multiple text blocks', () async {
+        final mockClient = http_testing.MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'content': [
+                {'type': 'text', 'text': 'part one\n'},
+                {'type': 'text', 'text': 'part two'},
+              ],
+            }),
+            200,
+          ),
+        );
+
+        final client = ClaudeClient(apiKey: 'sk-test', httpClient: mockClient);
+
+        final result = await client.complete(
+          systemPrompt: 'system',
+          userMessage: 'user',
+        );
+
+        expect(result, 'part one\npart two');
+
+        client.close();
+      });
+
+      test('throws ClaudeApiException when no text block is present', () {
+        final mockClient = http_testing.MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'stop_reason': 'max_tokens',
+              'content': [
+                {'type': 'thinking', 'thinking': '', 'signature': 'abc'},
+              ],
+            }),
+            200,
+          ),
+        );
+
+        final client = ClaudeClient(apiKey: 'sk-test', httpClient: mockClient);
+
+        expect(
+          () => client.complete(systemPrompt: 'system', userMessage: 'user'),
+          throwsA(
+            isA<ClaudeApiException>().having(
+              (e) => e.message,
+              'message',
+              contains('max_tokens'),
+            ),
+          ),
+        );
+
+        client.close();
+      });
+
+      test('throws ClaudeApiException on a refusal stop reason', () {
+        final mockClient = http_testing.MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'stop_reason': 'refusal',
+              'stop_details': {'type': 'refusal', 'category': 'cyber'},
+              'content': <dynamic>[],
+            }),
+            200,
+          ),
+        );
+
+        final client = ClaudeClient(apiKey: 'sk-test', httpClient: mockClient);
+
+        expect(
+          () => client.complete(systemPrompt: 'system', userMessage: 'user'),
+          throwsA(
+            isA<ClaudeApiException>().having(
+              (e) => e.message,
+              'message',
+              contains('cyber'),
+            ),
+          ),
+        );
 
         client.close();
       });

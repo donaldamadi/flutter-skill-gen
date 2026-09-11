@@ -4,6 +4,10 @@
 library;
 
 export 'src/ai/claude_client.dart';
+export 'src/ai/gemini_client.dart';
+export 'src/ai/llm_client.dart';
+export 'src/ai/llm_client_factory.dart';
+export 'src/ai/openai_client.dart';
 export 'src/ai/prompt_builder.dart';
 export 'src/analyzers/code_sampler.dart';
 export 'src/analyzers/pattern_detector.dart';
@@ -11,6 +15,7 @@ export 'src/analyzers/pubspec_analyzer.dart';
 export 'src/analyzers/structure_analyzer.dart';
 export 'src/ci/git_hooks_installer.dart';
 export 'src/ci/github_action_generator.dart';
+export 'src/cli/provider_options.dart';
 export 'src/config/config_manager.dart';
 export 'src/config/skillrc.dart';
 export 'src/generators/facts_writer.dart';

@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.0.0
+
+### Multi-Provider Support
+
+Skill generation is no longer tied to Anthropic. A provider-agnostic `LlmClient` seam sits between `SkillGenerator` and the network, with three implementations behind a factory — the generator calls one `complete()` method and never learns which vendor answered.
+
+- **Three providers.** `anthropic` (Claude Messages API, `x-api-key`), `openai` (any endpoint speaking OpenAI's `/chat/completions` shape, `Authorization: Bearer`), and `gemini` (Google's `generateContent`, `x-goog-api-key`). Selected with `--provider` on `analyze`, `sync`, `watch`, and `init`, or persisted with `flutter_skill_gen config --set-provider`.
+- **OpenAI-compatible endpoints.** `--provider openai` combined with `--base-url` targets DeepSeek, Groq, Together, Fireworks, OpenRouter, and local Ollama or vLLM servers. `LlmProvider.tryParse` accepts `deepseek`, `groq`, `together`, `fireworks`, `openrouter`, `ollama`, and `openai-compatible` as aliases for `openai`, plus `claude` for `anthropic` and `google` for `gemini`, so `--provider deepseek --base-url …` reads naturally.
+- **Provider-specific response handling.** Each client normalises its vendor's quirks rather than assuming a common shape: `OpenAiCompatibleClient` reads `choices[0].message.content`, surfaces `message.refusal`, and distinguishes a `finish_reason: length` truncation; `GeminiClient` reads `candidates[0].content.parts[]`, skips parts flagged `thought: true`, and reports `promptFeedback.blockReason` and `SAFETY`/`MAX_TOKENS` finish reasons, none of which arrive as HTTP errors.
+- **Reasoning-model token field.** OpenAI's reasoning models reject `max_tokens` and name `max_completion_tokens` in the error. `OpenAiCompatibleClient` sends `max_tokens` first — the field every compatible provider understands — and retries once with `max_completion_tokens` only when a 400 response explicitly asks for it. Unrelated 400s are not retried.
+- **`LlmApiException`** is the new provider-agnostic failure type. `ClaudeApiException` now extends it rather than implementing `Exception` directly, so existing `catch` sites and the exported type are unchanged, while `SkillGenerator`'s template fallback covers all three providers uniformly. A bad key, an unknown model, or a network error on any provider degrades to template output with a warning instead of failing the command.
+- **New public exports:** `LlmClient`, `LlmProvider`, `LlmApiException`, `LlmClientFactory`, `OpenAiCompatibleClient`, `GeminiClient`, and `ResolvedProvider`.
+
+### Bug Fixes — Thinking-Model Crash
+
+- **`type 'Null' is not a subtype of type 'String' in type cast` on every request to a thinking-enabled model.** `ClaudeClient.complete` took `content.first` and cast its `text` field to `String`. Models that think by default when the `thinking` parameter is omitted — Claude Sonnet 5, Opus 5, Opus 4.8, Opus 4.7 — return a `thinking` block *first*, which has no `text` field, so the cast hit `null`. This killed the process on every AI-powered run against those models, in every project. The client now collects text by block **type** across all blocks, skipping thinking blocks and concatenating multi-block responses.
+- **The crash also defeated the template fallback.** A `TypeError` is not a `ClaudeApiException`, so it slipped past the `catch` in `SkillGenerator._generateWithAi` and terminated the process instead of degrading to template generation. Failures that produce no usable text now raise `ClaudeApiException`, restoring the fallback.
+- **Refusals and truncation are now reported, not mis-parsed.** `stop_reason: "refusal"` (an HTTP 200 carrying no content) raises with its `stop_details.category`, and a response whose budget was consumed before any text was produced reports the token limit and the block types received rather than failing obscurely.
+- **`maxTokens` default raised from 8192 to 16000** across all three clients. Thinking tokens are drawn from the same budget, so 8192 risked the model spending the entire allowance reasoning and returning nothing on a large project.
+
+### Per-Provider Configuration
+
+`~/.flutter_skill_gen/config.yaml` gained three keys. Existing config files keep working untouched — nothing needs migrating.
+
+- **`api_keys:` — a per-provider key map.** Keys are stored per provider, so configuring Gemini never overwrites your Anthropic key and switching back needs no re-entry. `--set-key` writes to the active provider's slot; pass `--set-provider` in the same command and the provider is switched first, so the key lands where you expect. `--remove-key` likewise clears only the active provider.
+- **`provider:` and `base_url:`.** Set with `config --set-provider` and `config --set-base-url`; both are shown by `config --show`, alongside the provider a masked key belongs to.
+- **The legacy flat `api_key:` field is still read**, as the last fallback, answering for whichever provider is active — so single-provider Anthropic setups written before 1.0.0 continue to work with no changes. `--remove-key` also drops it, since it would otherwise keep answering for every provider.
+- **Provider environment variables.** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` are now read for the active provider. Full resolution order: `FLUTTER_SKILL_API_KEY` → the provider's own variable → `api_keys.<provider>` → the legacy `api_key`.
+- **Per-provider default models.** `ConfigManager.defaultModelFor` returns `claude-sonnet-5`, `gpt-5.6-sol`, or `gemini-3.8-flash`. Passing `--provider` *without* `--model` uses that provider's default rather than the stored model, which usually belongs to a different vendor and would 404.
+- **Model aliases are Anthropic-scoped.** `sonnet` and `opus` name Claude models, so `ConfigManager.resolveModel` only expands them under `anthropic`; any other provider receives the value unchanged. The method gained an optional `provider:` parameter defaulting to `anthropic`, so existing calls are unaffected.
+- **`ConfigManager` accepts an injected `environment` map**, making key-resolution behaviour testable and keeping the suite hermetic against ambient provider keys.
+
+### Model Defaults
+
+- **Bumped to the Claude 5 family.** The built-in default moved from `claude-sonnet-4-6` to `claude-sonnet-5`, and the `opus` alias from `claude-opus-4-7` to `claude-opus-5`. Unmapped IDs still pass through unchanged, so anyone with a specific model pinned in `~/.flutter_skill_gen/config.yaml` keeps calling that exact model.
+- These two changes are coupled to the crash fix above: shipping the Claude 5 default *without* the block-parsing fix would have made the crash universal rather than opt-in.
+
+### Behaviour Changes
+
+Worth reading before upgrading:
+
+- **Provider environment variables are now read.** If your shell already exports `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`, flutter_skill_gen will start using it. An install that previously produced template output with no configuration may now make real, billable API calls. `flutter_skill_gen config --show` reports the key that will actually be used, after the full resolution order.
+- **The default model changed**, and `maxTokens` rose from 8192 to 16000. Both affect per-run cost.
+- **`--set-key` writes to `api_keys.<provider>`**, not the flat `api_key:` field. Reads remain backward compatible.
+- **`base_url` is a single global value, not per-provider.** Setting it for DeepSeek and later switching to plain OpenAI will still target DeepSeek until it is cleared with `config --set-base-url ""`.
+- **An unknown `--provider` value fails fast** rather than silently falling back: exit code `1` from `analyze`, `sync`, and `watch`, and `64` from `init` and `config --set-provider`.
+
+### Documentation
+
+- **README restructured around one `## AI Providers` section.** Provider, key, and model guidance previously sat in four sections spread across the file; setting up a non-default provider meant reading all four and reconciling them. They are now consolidated in reading order — pick a provider, set it up, use a compatible service, choose a model, where keys are read from, what happens when a call fails — with per-provider key sources, environment variables, and a troubleshooting table.
+- Fixed a nesting bug where `### Project config (.skillrc.yaml)` had become a subsection of API-key documentation rather than of `## Configuration`.
+- Quick Start now leads with the zero-configuration path, since skill generation has never required an API key.
+
 ## 0.4.0
 
 ### Claude Code Best-Practice Alignment

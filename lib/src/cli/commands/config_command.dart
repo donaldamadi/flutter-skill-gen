@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
+import '../../ai/llm_client.dart';
 import '../../config/config_manager.dart';
 import '../../config/skillrc.dart';
 import '../../utils/logger.dart';
@@ -15,9 +16,30 @@ class ConfigCommand extends Command<int> {
   /// Creates a [ConfigCommand].
   ConfigCommand() {
     argParser
-      ..addOption('set-key', help: 'Set the Claude API key.')
-      ..addOption('set-model', help: 'Set the Claude model ID.')
-      ..addFlag('remove-key', help: 'Remove the stored API key.')
+      ..addOption(
+        'set-key',
+        help:
+            'Set the API key for the active provider. '
+            'Keys are stored per provider, so switching providers '
+            'does not overwrite the others.',
+      )
+      ..addOption('set-model', help: 'Set the model ID.')
+      ..addOption(
+        'set-provider',
+        help:
+            'Set the LLM provider. '
+            'Options: ${LlmProvider.all.join(', ')}.',
+      )
+      ..addOption(
+        'set-base-url',
+        help:
+            'Set the API base URL for OpenAI-compatible providers '
+            'and Gemini.',
+      )
+      ..addFlag(
+        'remove-key',
+        help: "Remove the active provider's stored API key.",
+      )
       ..addOption(
         'add-target',
         help:
@@ -60,6 +82,8 @@ class ConfigCommand extends Command<int> {
 
     final setKey = results.option('set-key');
     final setModel = results.option('set-model');
+    final setProvider = results.option('set-provider');
+    final setBaseUrl = results.option('set-base-url');
     final removeKey = results.flag('remove-key');
     final addTarget = results.option('add-target');
     final removeTarget = results.option('remove-target');
@@ -67,9 +91,29 @@ class ConfigCommand extends Command<int> {
 
     var didAction = false;
 
+    if (setProvider != null) {
+      final parsed = LlmProvider.tryParse(setProvider);
+      if (parsed == null) {
+        logger.error(
+          'Unknown provider: $setProvider. '
+          'Options: ${LlmProvider.all.join(', ')}',
+        );
+        return 64;
+      }
+      config.setProvider(parsed);
+      logger.success('Provider set to: ${parsed.id}');
+      didAction = true;
+    }
+
+    if (setBaseUrl != null) {
+      config.setBaseUrl(setBaseUrl);
+      logger.success('Base URL set to: $setBaseUrl');
+      didAction = true;
+    }
+
     if (setKey != null) {
       config.setApiKey(setKey);
-      logger.success('API key saved.');
+      logger.success('API key saved for provider: ${config.provider.id}');
       didAction = true;
     }
 
@@ -80,8 +124,9 @@ class ConfigCommand extends Command<int> {
     }
 
     if (removeKey) {
+      final provider = config.provider;
       config.removeApiKey();
-      logger.success('API key removed.');
+      logger.success('API key removed for provider: ${provider.id}');
       didAction = true;
     }
 
@@ -171,7 +216,8 @@ class ConfigCommand extends Command<int> {
   void _showConfig(ConfigManager config, String projectPath, Logger logger) {
     logger
       ..info('Global config (${config.configPath}):')
-      ..info('');
+      ..info('')
+      ..info('  provider: ${config.provider.id}');
 
     if (config.hasApiKey) {
       final key = config.apiKey!;
@@ -179,12 +225,17 @@ class ConfigCommand extends Command<int> {
           ? '${key.substring(0, 8)}...'
                 '${key.substring(key.length - 4)}'
           : '****';
-      logger.info('  api_key: $masked');
+      logger.info('  api_key:  $masked');
     } else {
-      logger.info('  api_key: (not set)');
+      logger.info('  api_key:  (not set)');
     }
 
-    logger.info('  model:   ${config.model}');
+    logger.info('  model:    ${config.model}');
+
+    final baseUrl = config.baseUrl;
+    if (baseUrl != null) {
+      logger.info('  base_url: $baseUrl');
+    }
 
     // Show project config if present.
     final skillrc = Skillrc(projectPath: projectPath);

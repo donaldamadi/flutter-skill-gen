@@ -13,6 +13,7 @@ import '../../models/project_facts.dart';
 import '../../output/target_writer.dart';
 import '../../scanner/project_scanner.dart';
 import '../../utils/logger.dart';
+import '../provider_options.dart';
 
 /// CLI command that scans a Flutter project and generates
 /// `.skill_facts.json`, `SKILL.md`, `.skill_manifest.yaml`,
@@ -53,10 +54,11 @@ class AnalyzeCommand extends Command<int> {
         'model',
         abbr: 'm',
         help:
-            'Claude model for AI generation. '
-            'Shortcuts: "sonnet", "opus". '
+            'Model for AI generation. '
+            'Shortcuts (Anthropic only): "sonnet", "opus". '
             'Or pass a full model ID.',
       );
+    addProviderOptions(argParser);
   }
 
   @override
@@ -101,14 +103,19 @@ class AnalyzeCommand extends Command<int> {
 
     // Phase 2: Plan and generate skill files.
     final config = ConfigManager();
-    final modelFlag = results.option('model');
-    final model = modelFlag != null
-        ? ConfigManager.resolveModel(modelFlag)
-        : config.model;
+    final ResolvedProvider resolved;
+    try {
+      resolved = resolveProvider(results, config);
+    } on UnknownProviderException catch (e) {
+      logger.error(e.toString());
+      return 1;
+    }
 
     final skillGen = SkillGenerator(
-      apiKey: config.apiKey,
-      model: model,
+      apiKey: resolved.apiKey,
+      model: resolved.model,
+      provider: resolved.provider,
+      baseUrl: resolved.baseUrl,
       logger: logger,
     );
 

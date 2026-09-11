@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
-import '../ai/claude_client.dart';
+import '../ai/llm_client.dart';
+import '../ai/llm_client_factory.dart';
 import '../ai/prompt_builder.dart';
 import '../models/domain_facts.dart';
 import '../models/evidence_bundle.dart';
@@ -18,17 +19,22 @@ import 'template_generator.dart';
 
 /// Generates a `SKILL.md` file from [ProjectFacts].
 ///
-/// Uses the Claude API when an API key is available, falling back to
-/// template-based generation otherwise.
+/// Uses the configured LLM provider when an API key is available,
+/// falling back to template-based generation otherwise.
 class SkillGenerator {
   /// Creates a [SkillGenerator].
   ///
   /// Pass [apiKey] and optionally [model] to enable AI-powered
   /// generation. When [apiKey] is `null`, the template fallback
-  /// is used. An optional [httpClient] can be injected for testing.
+  /// is used. [provider] selects which vendor API to call and
+  /// [baseUrl] retargets the OpenAI-compatible and Gemini clients at
+  /// another host. An optional [httpClient] can be injected for
+  /// testing.
   SkillGenerator({
     this.apiKey,
-    this.model = 'claude-sonnet-4-6',
+    this.model = 'claude-sonnet-5',
+    this.provider = LlmProvider.anthropic,
+    this.baseUrl,
     Logger? logger,
     http.Client? httpClient,
     VerifierMode? verifierMode,
@@ -39,11 +45,18 @@ class SkillGenerator {
            verifierMode ??
            _resolveVerifierMode(environment ?? Platform.environment);
 
-  /// Claude API key. `null` means template-only mode.
+  /// Provider API key. `null` means template-only mode.
   final String? apiKey;
 
-  /// Claude model ID.
+  /// Model ID passed to the provider.
   final String model;
+
+  /// Which provider API to call.
+  final LlmProvider provider;
+
+  /// Optional API base URL override for the OpenAI-compatible and
+  /// Gemini clients.
+  final String? baseUrl;
 
   /// Logger for diagnostic output.
   final Logger logger;
@@ -86,8 +99,12 @@ class SkillGenerator {
     final name = SkillName.normalize(facts.projectName);
     final description = _buildDescription(facts);
     final paths = _pathsForCore(facts);
-    return '${SkillName.frontmatter(name: name, description: description, paths: paths)}'
-        '$body';
+    final frontmatter = SkillName.frontmatter(
+      name: name,
+      description: description,
+      paths: paths,
+    );
+    return '$frontmatter$body';
   }
 
   /// Generates raw skill content without frontmatter.
@@ -208,11 +225,13 @@ class SkillGenerator {
       return TemplateGenerator.generateCore(facts);
     }
 
-    logger.info('Generating core SKILL.md with Claude ($model)...');
+    logger.info('Generating core SKILL.md with ${provider.id} ($model)...');
 
-    final client = ClaudeClient(
+    final client = LlmClientFactory.create(
+      provider: provider,
       apiKey: apiKey!,
       model: model,
+      baseUrl: baseUrl,
       httpClient: _httpClient,
     );
 
@@ -223,7 +242,7 @@ class SkillGenerator {
       );
       logger.success('Core skill generation complete.');
       return _verifyDraft(content, facts, label: 'core');
-    } on ClaudeApiException catch (e) {
+    } on LlmApiException catch (e) {
       logger.warn(
         'AI generation failed: $e\n'
         'Falling back to template-based generation.',
@@ -240,12 +259,14 @@ class SkillGenerator {
   ) async {
     logger.info(
       'Generating ${domainFacts.domainName} SKILL.md with '
-      'Claude ($model)...',
+      '${provider.id} ($model)...',
     );
 
-    final client = ClaudeClient(
+    final client = LlmClientFactory.create(
+      provider: provider,
       apiKey: apiKey!,
       model: model,
+      baseUrl: baseUrl,
       httpClient: _httpClient,
     );
 
@@ -263,7 +284,7 @@ class SkillGenerator {
         projectFacts,
         label: 'domain/${domainFacts.domainName}',
       );
-    } on ClaudeApiException catch (e) {
+    } on LlmApiException catch (e) {
       logger.warn(
         'AI generation for ${domainFacts.domainName} failed: '
         '$e\nFalling back to template-based generation.',
@@ -275,11 +296,13 @@ class SkillGenerator {
   }
 
   Future<String> _generateWithAi(ProjectFacts facts) async {
-    logger.info('Generating SKILL.md with Claude ($model)...');
+    logger.info('Generating SKILL.md with ${provider.id} ($model)...');
 
-    final client = ClaudeClient(
+    final client = LlmClientFactory.create(
+      provider: provider,
       apiKey: apiKey!,
       model: model,
+      baseUrl: baseUrl,
       httpClient: _httpClient,
     );
 
@@ -290,7 +313,7 @@ class SkillGenerator {
       );
       logger.success('AI generation complete.');
       return _verifyDraft(content, facts);
-    } on ClaudeApiException catch (e) {
+    } on LlmApiException catch (e) {
       logger.warn(
         'AI generation failed: $e\n'
         'Falling back to template-based generation.',

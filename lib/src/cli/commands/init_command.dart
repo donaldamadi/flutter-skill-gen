@@ -11,6 +11,7 @@ import '../../generators/skill_generator.dart';
 import '../../scanner/project_scanner.dart';
 import '../../templates/template_scaffolder.dart';
 import '../../utils/logger.dart';
+import '../provider_options.dart';
 
 /// CLI command that scaffolds a new Flutter project from a built-in
 /// template or a GitHub repository, then generates SKILL.md.
@@ -45,10 +46,11 @@ class InitCommand extends Command<int> {
         'model',
         abbr: 'm',
         help:
-            'Claude model for AI generation. '
-            'Shortcuts: "sonnet", "opus". '
+            'Model for AI generation. '
+            'Shortcuts (Anthropic only): "sonnet", "opus". '
             'Or pass a full model ID.',
       );
+    addProviderOptions(argParser);
   }
 
   @override
@@ -83,33 +85,26 @@ class InitCommand extends Command<int> {
       return 64;
     }
 
-    final modelFlag = results.option('model');
-    final modelOverride = modelFlag != null
-        ? ConfigManager.resolveModel(modelFlag)
-        : null;
-
-    if (fromRepo != null) {
-      return _initFromRepo(
-        fromRepo,
-        results,
-        logger,
-        modelOverride: modelOverride,
-      );
+    final ResolvedProvider resolved;
+    try {
+      resolved = resolveProvider(results, ConfigManager());
+    } on UnknownProviderException catch (e) {
+      logger.error(e.toString());
+      return 64;
     }
 
-    return _initFromTemplate(
-      arch!,
-      results,
-      logger,
-      modelOverride: modelOverride,
-    );
+    if (fromRepo != null) {
+      return _initFromRepo(fromRepo, results, logger, resolved: resolved);
+    }
+
+    return _initFromTemplate(arch!, results, logger, resolved: resolved);
   }
 
   Future<int> _initFromTemplate(
     String arch,
     dynamic results,
     Logger logger, {
-    String? modelOverride,
+    required ResolvedProvider resolved,
   }) async {
     if (!TemplateId.all.contains(arch)) {
       logger.error(
@@ -138,18 +133,14 @@ class InitCommand extends Command<int> {
     }
 
     // Analyze the scaffolded project and generate SKILL.md.
-    return _analyzeAndGenerate(
-      outputPath,
-      logger,
-      modelOverride: modelOverride,
-    );
+    return _analyzeAndGenerate(outputPath, logger, resolved: resolved);
   }
 
   Future<int> _initFromRepo(
     String repoUrl,
     dynamic results,
     Logger logger, {
-    String? modelOverride,
+    required ResolvedProvider resolved,
   }) async {
     // Derive project name from repo URL.
     final repoName = _repoNameFromUrl(repoUrl);
@@ -182,17 +173,13 @@ class InitCommand extends Command<int> {
       logger.debug('Removed .git directory.');
     }
 
-    return _analyzeAndGenerate(
-      outputPath,
-      logger,
-      modelOverride: modelOverride,
-    );
+    return _analyzeAndGenerate(outputPath, logger, resolved: resolved);
   }
 
   Future<int> _analyzeAndGenerate(
     String projectPath,
     Logger logger, {
-    String? modelOverride,
+    required ResolvedProvider resolved,
   }) async {
     logger.info('Analyzing project...');
 
@@ -210,11 +197,11 @@ class InitCommand extends Command<int> {
     final factsPath = FactsWriter.write(facts, outputDir: projectPath);
     logger.success('Generated $factsPath');
 
-    final config = ConfigManager();
-    final model = modelOverride ?? config.model;
     final skillGen = SkillGenerator(
-      apiKey: config.apiKey,
-      model: model,
+      apiKey: resolved.apiKey,
+      model: resolved.model,
+      provider: resolved.provider,
+      baseUrl: resolved.baseUrl,
       logger: logger,
     );
 
