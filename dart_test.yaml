@@ -10,4 +10,5 @@ paths:
   - test/router/
   - test/scanner/
   - test/templates/
+  - test/utils/
   - test/verifier/

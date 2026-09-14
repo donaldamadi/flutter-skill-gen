@@ -20,6 +20,11 @@ Skill generation is no longer tied to Anthropic. A provider-agnostic `LlmClient`
 - **Refusals and truncation are now reported, not mis-parsed.** `stop_reason: "refusal"` (an HTTP 200 carrying no content) raises with its `stop_details.category`, and a response whose budget was consumed before any text was produced reports the token limit and the block types received rather than failing obscurely.
 - **`maxTokens` default raised from 8192 to 16000** across all three clients. Thinking tokens are drawn from the same budget, so 8192 risked the model spending the entire allowance reasoning and returning nothing on a large project.
 
+### Bug Fixes — Deterministic Analysis
+
+- **The same project produced different skill files on different machines.** `FileUtils.collectDartFiles` returned `listSync` results in raw filesystem order — which varies by platform and by the order files happened to be created — while its sibling `listSubdirectories` sorted. Every consumer inherited that nondeterminism: `CodeSampler` picked whichever matching file the filesystem happened to yield first, so the representative bloc / repository / usecase samples spliced into `.skill_facts.json` and into every AI prompt could differ between a developer's machine and CI, or between two clones of the same repository. Results are now sorted by path. A practical side effect: `sync`'s change detection compares against the previous `.skill_facts.json`, so unstable ordering could trigger regeneration — and a billable API call — when nothing had actually changed.
+- **Restored three test fixtures that were never committed.** `sample_bloc_project` was missing its `home` (full clean-arch) and `cart` (presentation-only) features, and `sample_monorepo/app` had a `pubspec.yaml` with no `lib/`, so `StructureAnalyzer.analyze()` returned early at its missing-`lib/` guard and never evaluated package detection. Eight tests across `structure_analyzer`, `domain_analyzer`, and `project_scanner` had been asserting against a fixture that did not exist on disk. The fixtures now match what those tests describe — including `cart`'s deliberately absent `data/` and `domain/` layers, which is what proves layer detection is per-feature rather than project-wide.
+
 ### Per-Provider Configuration
 
 `~/.flutter_skill_gen/config.yaml` gained three keys. Existing config files keep working untouched — nothing needs migrating.
@@ -45,6 +50,7 @@ Worth reading before upgrading:
 - **The default model changed**, and `maxTokens` rose from 8192 to 16000. Both affect per-run cost.
 - **`--set-key` writes to `api_keys.<provider>`**, not the flat `api_key:` field. Reads remain backward compatible.
 - **`base_url` is a single global value, not per-provider.** Setting it for DeepSeek and later switching to plain OpenAI will still target DeepSeek until it is cleared with `config --set-base-url ""`.
+- **Code samples may differ from 0.4.0 output.** Sorting `collectDartFiles` changes which file `CodeSampler` selects as the representative sample for a pattern, so regenerating an existing project can produce a different — but now stable — `.skill_facts.json` and skill file.
 - **An unknown `--provider` value fails fast** rather than silently falling back: exit code `1` from `analyze`, `sync`, and `watch`, and `64` from `init` and `config --set-provider`.
 
 ### Documentation
@@ -91,12 +97,14 @@ Regression tests in `test/regression/multi_file_and_evidence_test.dart` lock in 
 
 ## 0.2.1
 
-### Model Defaults
+### Default Model Update
+
 - Bumped the built-in default model from `claude-sonnet-4-20250514` to `claude-sonnet-4-6` (Sonnet 4.6), and refreshed the `opus` alias target to `claude-opus-4-7` (Opus 4.7). The alias map and `defaultModel` are now consistent — `--model sonnet`, an unset global config, and a missing `--model` flag all resolve to the same model. Users with `claude-sonnet-4-20250514` pinned in their `~/.flutter_skill_gen/config.yaml` continue to call that exact model (unmapped IDs pass through unchanged).
 
 ## 0.2.0
 
 ### Hallucination-Proof Generation
+
 - **EvidenceBundle** — new ground-truth payload emitted by `ProjectScanner` that enumerates every `lib/` file path, every declared class name, per-feature layer/state/widget evidence, known file-name glob patterns, and DI registration style (`centralized` vs `per-feature`). Serialized into `.skill_facts.json` and spliced into every Claude prompt.
 - **Grounding rules** — every system prompt (single, core, domain) now carries a `CRITICAL — grounding rules` block instructing the model to draw class names, file paths, globs, and DI claims exclusively from `evidence.*` fields. Available as `PromptBuilder.groundingRules` for reuse.
 - **DraftVerifier** — post-generation pass that cross-checks AI drafts against the evidence bundle. Flags four violation kinds: `unknownFilePath`, `unknownClassName`, `unknownGlobPattern`, and `falseDiPerFeatureClaim`. Configurable via `VerifierMode.annotate` (default — inline `<!-- [UNVERIFIED: …] -->` markers), `VerifierMode.strip` (delete offending lines), or `VerifierMode.fatal` (raise `DraftVerificationFailedException`).
@@ -106,11 +114,13 @@ Regression tests in `test/regression/multi_file_and_evidence_test.dart` lock in 
 ## 0.1.2
 
 ### Bug Fixes
+
 - Fixed feature detection for layer-first projects where features sit directly under `lib/ui/` or `lib/presentation/` without an intermediate `pages/`, `features/`, or `screens/` container. Previously these projects were detected as having 0–2 features and always fell back to single-file output; they now produce proper multi-skill splits.
 
 ## 0.1.1
 
-### Documentation
+### Documentation Updates
+
 - Added `example/README.md` with end-to-end CLI usage scenarios covering analyze, multi-target sync, watch mode, project scaffolding, API key config, and git hooks.
 - Documented the implicit `FormatWriter` default constructor so 100% of the public API is covered by dartdoc.
 
@@ -119,6 +129,7 @@ Regression tests in `test/regression/multi_file_and_evidence_test.dart` lock in 
 Initial release.
 
 ### Static Analysis
+
 - **PubspecAnalyzer** — parses `pubspec.yaml` for dependencies, SDK constraints, and package metadata.
 - **StructureAnalyzer** — detects folder organization (feature-first, layer-first, hybrid), monorepo structure, and project complexity.
 - **PatternDetector** — identifies architecture patterns (Clean Architecture, MVVM, MVC), state management (BLoC, Riverpod, Provider, GetX, MobX, Cubit), navigation, DI, networking, storage, code generation, and internationalization.
@@ -128,6 +139,7 @@ Initial release.
 - **FactsWriter** — writes `.skill_facts.json` with full project analysis data.
 
 ### AI-Powered Generation
+
 - **ClaudeClient** — HTTP client for the Claude Messages API.
 - **PromptBuilder** — constructs system and user prompts for core, domain, and single-file skill generation.
 - **SkillGenerator** — generates skill content via Claude API with automatic template fallback when no API key is configured.
@@ -135,17 +147,20 @@ Initial release.
 - **ManifestGenerator** — writes `.skill_manifest.yaml` with machine-readable project metadata.
 
 ### Multi-File Skill Splitting
+
 - **SplitPlanner** — decides whether to generate a single skill file or split into core + domain files based on project complexity.
 - **DomainFacts model** — domain-scoped analysis data (files, samples, layers, state classes, entities) for per-feature skill generation.
 - Auto-detection based on project complexity; controllable via `--split` / `--no-split` flags.
 - Formats that support multi-file write separate files per skill; formats that support concatenation join skills with section separators; others receive core-only output.
 
 ### Model Selection
+
 - Choose between Claude Sonnet (default) and Claude Opus via `--model` flag or global config.
 - Supports shortcut aliases (`sonnet`, `opus`) and full model IDs.
 - Priority chain: CLI flag > global config > built-in default (Sonnet).
 
 ### CLI Commands
+
 - **`analyze`** — scan a project and generate `.skill_facts.json`, `SKILL.md`, and `.skill_manifest.yaml`. Supports `--split`, `--facts-only`, `--model`, `--output`, and `--verbose`.
 - **`sync`** — re-analyze and regenerate all skill files with change detection to skip unnecessary regeneration. Supports `--force`, `--ci`, `--split`, and `--model`.
 - **`watch`** — monitor `lib/` and `pubspec.yaml` for changes and regenerate skill files automatically with configurable debounce. Supports `--debounce` and `--model`.
@@ -154,20 +169,24 @@ Initial release.
 - **`hooks`** — install/remove pre-commit and post-merge git hooks, generate GitHub Actions workflow. Supports `--install`, `--remove`, `--github-action`, `--dart-only`, and `--status`.
 
 ### Output Targets
+
 - 8 output formats: `generic` (SKILL.md), `claude_code` (CLAUDE.md), `cursor` (.cursorrules), `copilot` (.github/copilot-instructions.md), `windsurf` (.windsurfrules), `antigravity` (.agents/skills/\<name\>/SKILL.md), `antigravity_rules` (.gemini/GEMINI.md), `agents_md` (AGENTS.md).
 - Multi-target support via `.skillrc.yaml` — write to multiple AI tools simultaneously.
 - **TargetWriter** dispatches to format-specific writers with multi-file, concatenation, and core-only strategies.
 
 ### Configuration
+
 - **Global config** at `~/.flutter_skill_gen/config.yaml` for API key and model preference.
 - **Project config** at `.skillrc.yaml` for output targets and watch settings.
 - Environment variable support (`FLUTTER_SKILL_API_KEY`).
 
 ### CI & Automation
+
 - **GitHooksInstaller** — pre-commit and post-merge hooks that run `flutter_skill_gen sync`.
 - **GitHubActionGenerator** — generates `.github/workflows/skill_sync.yml` with Flutter or Dart-only SDK setup.
 
 ### VS Code Extension
+
 - Command palette integration (Analyze, Sync, Watch, Preview).
 - Status bar indicator (idle, syncing, watching, error).
 - Skill file preview in markdown.

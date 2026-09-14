@@ -10,6 +10,12 @@ class FileUtils {
   ///
   /// Excludes generated files (`.g.dart`, `.freezed.dart`) and
   /// build artifacts (`.dart_tool/`, `build/`).
+  ///
+  /// Results are sorted by path. `listSync` returns entries in
+  /// filesystem order, which varies by platform and by the order
+  /// files happened to be created — without sorting, the same
+  /// project yields different code samples and a different
+  /// `.skill_facts.json` on different machines.
   static List<File> collectDartFiles(Directory directory) {
     if (!directory.existsSync()) return [];
 
@@ -29,6 +35,7 @@ class FileUtils {
       // Broken symlinks, permission errors, or other I/O issues —
       // return whatever was collected so far.
     }
+    files.sort((a, b) => a.path.compareTo(b.path));
     return files;
   }
 
