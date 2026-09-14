@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.1.0
+
+Two ways to generate skill files without an API key, both answering the
+same request: *"I'd prefer to use Claude Code directly."* Neither is
+Claude-only: the same paths work with OpenAI Codex, Gemini CLI, and
+OpenCode.
+
+### Keyless Generation via a Local Agent CLI
+
+- **Three new providers: `claude-code`, `codex`, and `gemini-cli`.** Each drives a coding agent already installed on the machine instead of calling a hosted API, authenticating with the sign-in that agent already holds. No API key, billed to the existing subscription. Persist one with `config --set-provider <id>`. Aliases: `claude_code`/`claudecode`/`cc`, `codex-cli`, `gemini_cli`/`geminicli`. `gemini-cli` drives the local binary and is deliberately distinct from `gemini`, which calls the paid API.
+- **`AgentCli` describes what differs between them** — the flag that turns on non-interactive mode, whether a separate system prompt is accepted, and how the answer comes back — so one `AgentCliClient` drives all three rather than three near-identical clients. Codex and Gemini CLI have no system-prompt flag, so the grounding rules are prepended to the prompt; every agent therefore receives the same instructions the API providers do.
+- **Agent-specific hardening.** Claude Code is invoked with its filesystem, shell, and network tools denied; Codex with `--sandbox read-only` passed explicitly, so a changed upstream default cannot let a run write files. All three run from a scratch directory rather than the project.
+- **`LlmProvider.requiresApiKey`** distinguishes providers that carry their own credentials. `SkillGenerator.hasAi` now turns on the provider rather than on a non-null key, so `claude-code` reaches the AI path with an empty config, and `apiKeyFor(claudeCode)` always returns `null` — a stray `ANTHROPIC_API_KEY` in the environment no longer makes `config --show` claim a key is in play.
+- **`LlmClientFactory.create` accepts a nullable `apiKey`** and raises the new `MissingApiKeyException` for providers that need one, instead of relying on every call site to force-unwrap.
+- **The CLI is invoked defensively.** The prompt goes over stdin, not argv, so a multi-megabyte facts payload cannot exceed the platform argument limit. A response wrapped in a single enclosing code fence is unwrapped, which a raw API rarely needs but an agent CLI often does, and plain-text output is accepted from an agent whose installed version does not support its JSON flag.
+- **Failures degrade, they do not crash.** A missing binary or a failing run raises `AgentCliException extends LlmApiException`, so the existing template fallback covers it exactly as it covers a bad API key. `FLUTTER_SKILL_CLAUDE_BIN`, `FLUTTER_SKILL_CODEX_BIN`, and `FLUTTER_SKILL_GEMINI_BIN` point a provider at a CLI that is named differently or is not on PATH.
+- **`analyze`, `sync`, and `watch` warn up front** when generation will fall back to templates — a missing key, or a missing agent binary — via the new `ResolvedProvider.unavailableReason`, which names the executable and the environment variable that repoints it. It stays a warning: a skill file is still produced.
+
+### Ship as an Agent Skill
+
+The analyzer does the scanning, an agent writes the prose, and the CLI verifies and assembles it. Three new commands split the model call out of the pipeline so any coding agent can stand in for it:
+
+- **`flutter_skill_gen prompt`** scans the project and writes a `.skill_work/` handoff directory: `plan.json` (the scopes to write), `facts.json`, and one `prompts/<scope>.md` per planned skill file carrying the same system prompt and evidence-bearing JSON payload the API would have received. No model call, no key.
+- **`flutter_skill_gen assemble`** reads `drafts/<scope>.md` back, runs every draft through `DraftVerifier` against the captured evidence bundle, splices in the generated diagrams and gotchas, adds frontmatter, and writes to every configured output target. `--clean` removes the work directory afterwards. Exit codes: `66` no workspace, `65` a missing or blank draft, `1` verification failed under `FLUTTER_SKILL_VERIFIER_MODE=fatal`.
+- **`flutter_skill_gen install-skill`** installs the bundled Agent Skill into **both** `.claude/skills/flutter-skill-gen/` and `.agents/skills/flutter-skill-gen/` by default — between them, every agent that implements the standard. `--agent claude|codex|gemini|opencode|agents|all` narrows it, `--global` installs under the home directory, and `--output` targets any directory. Installation is all-or-nothing: if a skill already exists at either location, nothing is written until `--force` is passed, so a half-installed skill can never be current for one agent and stale for another. The skill teaches the agent the full loop, including the rules that otherwise corrupt output — no frontmatter, no wrapping fences, no hand-written Gotchas or Data Flow sections, and the per-scope line budget.
+- **The skill is written for any agent, not just Claude Code.** Its first step checks the CLI with `--help` and looks for `prompt` in the command list, which also catches an install too old to have it, and it explains the `dart run flutter_skill_gen` form for projects where the package is a dev dependency. A test fails the build if the skill ever names a command or flag the CLI does not accept.
+- **An agent-written draft is held to the same standard as an API-written one.** This matters more, not less: an agent can read the whole repository, so only the evidence bundle stops it asserting something plausible but absent. `SkillGenerator.assemble` and `assembleAll` verify before finishing, and `assembleAll` raises `MissingDraftException` for a scope the plan named but no draft covers.
+- **Facts are written inside the workspace, not to `.skill_facts.json`.** A `prompt` run that is never assembled must not advance the baseline `sync` compares against, or the next `sync` would see no change and skip a SKILL.md that is still stale. `assemble` writes the root facts file at the end, as `analyze` does.
+- **`assemble` warns when the project changed between the two commands**, naming the scopes that appeared or disappeared.
+
+### Known Limitations
+
+- **The Codex and Gemini CLI providers are written from those tools' documented flags, not from a verified run.** `codex exec --sandbox read-only -` and `gemini --output-format json` were taken from the official docs; only the Claude Code provider has been exercised end to end. A wrong flag is not destructive — the run fails and falls back to template output with the CLI's own error — but treat those two providers as unconfirmed until someone with them installed reports back.
+- **`--provider gemini-cli` needs a Gemini CLI new enough to accept `--output-format`.** Older builds reject it; the client accepts their plain-text output, so generation still works.
+- **None of the agent-CLI providers suit CI.** A build server is not signed in to an agent. Keep using `FLUTTER_SKILL_API_KEY` there.
+
+### Public API
+
+- **New exports:** `AgentCli`, `AgentCliClient`, `AgentCliException`, `CliInvocation`, `CliInvoker`, `MissingApiKeyException`, `MissingDraftException`, `SkillWorkspace`, `WorkspacePlan`, `WorkspaceException`, `AgentSkillAsset`, `SkillLocation`.
+- **New enum values `LlmProvider.claudeCode`, `LlmProvider.codex`, and `LlmProvider.geminiCli`**, plus the field `LlmProvider.requiresApiKey`. Exhaustive switches over `LlmProvider` in downstream code need new cases.
+- **`LlmClientFactory.create`'s `apiKey` parameter is now `String?`** (was `String`). Existing call sites passing a non-null key are unaffected.
+- **`ConfigManager.envVarFor` returns `''` for the three agent-CLI providers** — they read no key from the environment.
+
 ## 1.0.0
 
 ### Multi-Provider Support
