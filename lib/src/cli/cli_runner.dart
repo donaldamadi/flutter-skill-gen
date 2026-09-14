@@ -1,9 +1,12 @@
 import 'package:args/command_runner.dart';
 
 import 'commands/analyze_command.dart';
+import 'commands/assemble_command.dart';
 import 'commands/config_command.dart';
 import 'commands/hooks_command.dart';
 import 'commands/init_command.dart';
+import 'commands/install_skill_command.dart';
+import 'commands/prompt_command.dart';
 import 'commands/sync_command.dart';
 import 'commands/watch_command.dart';
 
@@ -18,9 +21,12 @@ class CliRunner extends CommandRunner<int> {
             'from the first prompt.',
       ) {
     addCommand(AnalyzeCommand());
+    addCommand(AssembleCommand());
     addCommand(ConfigCommand());
     addCommand(HooksCommand());
     addCommand(InitCommand());
+    addCommand(InstallSkillCommand());
+    addCommand(PromptCommand());
     addCommand(SyncCommand());
     addCommand(WatchCommand());
   }

@@ -47,10 +47,17 @@ void main() {
       expect(commands, contains('watch'));
     });
 
-    test('has 7 registered commands (6 + help)', () {
-      // analyze, config, hooks, init, sync, watch
-      // + auto-registered help
-      expect(runner.commands, hasLength(7));
+    test('has 10 registered commands (9 + help)', () {
+      // analyze, assemble, config, hooks, init, install-skill,
+      // prompt, sync, watch + auto-registered help
+      expect(runner.commands, hasLength(10));
+    });
+
+    test('registers the keyless agent-driven commands', () {
+      final commands = runner.commands.keys;
+      expect(commands, contains('prompt'));
+      expect(commands, contains('assemble'));
+      expect(commands, contains('install-skill'));
     });
   });
 }

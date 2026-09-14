@@ -89,7 +89,7 @@ class SkillGenerator {
 
   /// Whether AI-powered generation is available.
   ///
-  /// Providers that carry their own credentials (an agent CLI) need no
+  /// Providers that carry their own credentials (Claude Code) need no
   /// key, so availability turns on the provider rather than on
   /// [apiKey] alone.
   bool get hasAi {
@@ -104,8 +104,25 @@ class SkillGenerator {
   /// Returns the generated markdown string.
   Future<String> generate(ProjectFacts facts) async {
     final aiContent = await _generateContent(facts);
+    return _finishSingle(facts, aiContent);
+  }
+
+  /// Finishes an externally authored [draft] into a complete
+  /// single-file skill.
+  ///
+  /// This is the back half of [generate] with the model call removed:
+  /// the draft is verified against the evidence bundle, the
+  /// deterministic sections are spliced in, and frontmatter is added.
+  /// It is what lets an agent that already has the project in context
+  /// — Claude Code running the shipped Agent Skill — write the prose
+  /// itself and still get the same grounding and post-processing an
+  /// API-generated draft gets.
+  String assemble(ProjectFacts facts, String draft) =>
+      _finishSingle(facts, _verifyDraft(draft, facts));
+
+  String _finishSingle(ProjectFacts facts, String content) {
     final body = _spliceDeterministicSections(
-      aiContent,
+      content,
       diagram: AsciiDiagrams.forProject(facts),
       gotchas: GotchasLibrary.renderSection(GotchasLibrary.forProject(facts)),
     );
@@ -176,61 +193,111 @@ class SkillGenerator {
     final results = <String, String>{};
 
     for (final spec in plan.specs) {
-      String content;
-      String frontmatterName;
-      String description;
-      List<String> paths;
-
+      final String draft;
       if (spec.isDomain && spec.domainFacts != null) {
-        frontmatterName = SkillName.withSuffix(
-          facts.projectName,
-          spec.skillName,
-        );
-        description = _buildDomainDescription(spec.domainFacts!, facts);
-        final featureEvidence = _featureEvidenceFor(spec.skillName, facts);
-        paths = _pathsForDomain(spec.domainFacts!, facts, featureEvidence);
         logger.info('Generating domain skill: ${spec.skillName}...');
-        final aiContent = await generateDomain(spec.domainFacts!, facts);
-        content = _spliceDeterministicSections(
-          aiContent,
-          diagram: featureEvidence == null
-              ? ''
-              : AsciiDiagrams.forFeature(featureEvidence, facts),
-          gotchas: featureEvidence == null
-              ? ''
-              : GotchasLibrary.renderSection(
-                  GotchasLibrary.forFeature(featureEvidence, facts),
-                ),
-        );
+        draft = await generateDomain(spec.domainFacts!, facts);
+      } else if (plan.isSplit) {
+        logger.info('Generating core skill...');
+        draft = await _generateCoreWithAi(facts);
       } else {
-        frontmatterName = SkillName.withSuffix(facts.projectName, 'core');
-        description = _buildCoreDescription(facts);
-        paths = _pathsForCore(facts, isSplit: plan.isSplit);
-        String aiContent;
-        if (plan.isSplit) {
-          logger.info('Generating core skill...');
-          aiContent = await _generateCoreWithAi(facts);
-        } else {
-          aiContent = await _generateContent(facts);
-        }
-        content = _spliceDeterministicSections(
-          aiContent,
-          diagram: AsciiDiagrams.forProject(facts),
-          gotchas: GotchasLibrary.renderSection(
-            GotchasLibrary.forProject(facts),
-          ),
-        );
+        draft = await _generateContent(facts);
       }
 
-      final frontmatter = SkillName.frontmatter(
-        name: frontmatterName,
-        description: description,
-        paths: paths,
+      results[spec.skillName] = _finishSpec(
+        spec,
+        facts,
+        draft,
+        isSplit: plan.isSplit,
       );
-      results[spec.skillName] = '$frontmatter$content';
     }
 
     return results;
+  }
+
+  /// Finishes externally authored [drafts] into complete skill files.
+  ///
+  /// The multi-file counterpart to [assemble]: [drafts] maps each
+  /// scope in [plan] (`core`, `auth`, …) to the markdown an external
+  /// author produced for it. Every draft is verified against the
+  /// evidence bundle before the deterministic sections and
+  /// frontmatter are added, so a draft written by an agent is held to
+  /// exactly the same grounding standard as one returned by an API.
+  ///
+  /// Throws [MissingDraftException] when [plan] names a scope that
+  /// [drafts] has no content for.
+  Map<String, String> assembleAll(
+    SkillPlan plan,
+    ProjectFacts facts,
+    Map<String, String> drafts,
+  ) {
+    final results = <String, String>{};
+
+    for (final spec in plan.specs) {
+      final draft = drafts[spec.skillName];
+      if (draft == null || draft.trim().isEmpty) {
+        throw MissingDraftException(spec.skillName);
+      }
+
+      final label = spec.isDomain ? 'domain/${spec.skillName}' : 'core';
+      results[spec.skillName] = _finishSpec(
+        spec,
+        facts,
+        _verifyDraft(draft, facts, label: label),
+        isSplit: plan.isSplit,
+      );
+    }
+
+    return results;
+  }
+
+  /// Splices deterministic sections into [draft] and prefixes the
+  /// frontmatter [spec] calls for.
+  ///
+  /// Shared by [generateAll] and [assembleAll] so a draft is finished
+  /// identically regardless of who wrote it. Verification is
+  /// deliberately not done here — the generate path verifies inside
+  /// its provider calls, and doing it twice would annotate the same
+  /// line twice.
+  String _finishSpec(
+    SkillSpec spec,
+    ProjectFacts facts,
+    String draft, {
+    required bool isSplit,
+  }) {
+    if (spec.isDomain && spec.domainFacts != null) {
+      final domain = spec.domainFacts!;
+      final featureEvidence = _featureEvidenceFor(spec.skillName, facts);
+      final content = _spliceDeterministicSections(
+        draft,
+        diagram: featureEvidence == null
+            ? ''
+            : AsciiDiagrams.forFeature(featureEvidence, facts),
+        gotchas: featureEvidence == null
+            ? ''
+            : GotchasLibrary.renderSection(
+                GotchasLibrary.forFeature(featureEvidence, facts),
+              ),
+      );
+      final frontmatter = SkillName.frontmatter(
+        name: SkillName.withSuffix(facts.projectName, spec.skillName),
+        description: _buildDomainDescription(domain, facts),
+        paths: _pathsForDomain(domain, facts, featureEvidence),
+      );
+      return '$frontmatter$content';
+    }
+
+    final content = _spliceDeterministicSections(
+      draft,
+      diagram: AsciiDiagrams.forProject(facts),
+      gotchas: GotchasLibrary.renderSection(GotchasLibrary.forProject(facts)),
+    );
+    final frontmatter = SkillName.frontmatter(
+      name: SkillName.withSuffix(facts.projectName, 'core'),
+      description: _buildCoreDescription(facts),
+      paths: _pathsForCore(facts, isSplit: isSplit),
+    );
+    return '$frontmatter$content';
   }
 
   Future<String> _generateCoreWithAi(ProjectFacts facts) async {
@@ -512,4 +579,19 @@ class SkillGenerator {
     }
     return buf.toString();
   }
+}
+
+/// Thrown when an assemble run is missing the draft for a planned
+/// skill scope.
+class MissingDraftException implements Exception {
+  /// Creates a [MissingDraftException] for [scope].
+  const MissingDraftException(this.scope);
+
+  /// The skill scope (`core`, `auth`, …) with no draft.
+  final String scope;
+
+  @override
+  String toString() =>
+      'MissingDraftException: no draft supplied for skill '
+      'scope "$scope".';
 }

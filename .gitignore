@@ -6,6 +6,7 @@ doc/api/
 *.g.dart.info
 
 # Generated skill output (from running the tool on itself)
+.skill_work/
 .skill_facts.json
 .skill_manifest.yaml
 SKILL.md

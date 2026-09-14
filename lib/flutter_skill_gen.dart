@@ -32,4 +32,6 @@ export 'src/output/target_writer.dart';
 export 'src/router/manifest_reader.dart';
 export 'src/router/skill_router.dart';
 export 'src/scanner/project_scanner.dart';
+export 'src/skill/agent_skill_asset.dart';
+export 'src/skill/skill_workspace.dart';
 export 'src/templates/template_scaffolder.dart';

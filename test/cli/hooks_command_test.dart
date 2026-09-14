@@ -47,10 +47,11 @@ void main() {
   });
 
   group('CliRunner with hooks', () {
-    test('registers 7 commands (6 + help)', () {
+    test('registers 10 commands (9 + help)', () {
       final runner = CliRunner();
-      // analyze, config, hooks, init, sync, watch + auto help
-      expect(runner.commands.keys, hasLength(7));
+      // analyze, assemble, config, hooks, init, install-skill,
+      // prompt, sync, watch + auto help
+      expect(runner.commands.keys, hasLength(10));
     });
   });
 }
