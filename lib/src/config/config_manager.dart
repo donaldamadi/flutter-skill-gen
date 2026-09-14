@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
+import '../ai/agent_cli_client.dart';
 import '../ai/llm_client.dart';
 
 /// Manages the flutter_skill_gen configuration stored at
@@ -55,10 +56,16 @@ class ConfigManager {
   static const apiKeyEnvVar = 'FLUTTER_SKILL_API_KEY';
 
   /// The provider's own conventional environment variable.
+  ///
+  /// Empty for providers that carry their own credentials and so read
+  /// no key from the environment.
   static String envVarFor(LlmProvider provider) => switch (provider) {
     LlmProvider.anthropic => 'ANTHROPIC_API_KEY',
     LlmProvider.openai => 'OPENAI_API_KEY',
     LlmProvider.gemini => 'GEMINI_API_KEY',
+    LlmProvider.claudeCode => '',
+    LlmProvider.codex => '',
+    LlmProvider.geminiCli => '',
   };
 
   /// Returns the API key for the active provider, or `null` if none
@@ -73,7 +80,13 @@ class ConfigManager {
 
   /// Returns the stored API key for [target], independent of which
   /// provider is currently active.
+  ///
+  /// Always `null` for providers that carry their own credentials —
+  /// handing `claude-code` a stray `ANTHROPIC_API_KEY` would only
+  /// mislead `config --show`.
   String? apiKeyFor(LlmProvider target) {
+    if (!target.requiresApiKey) return null;
+
     final envKey = _env[apiKeyEnvVar];
     if (envKey != null && envKey.isNotEmpty) return envKey;
 
@@ -185,6 +198,9 @@ class ConfigManager {
     LlmProvider.anthropic => defaultModel,
     LlmProvider.openai => 'gpt-5.6-sol',
     LlmProvider.gemini => 'gemini-3.8-flash',
+    LlmProvider.claudeCode => AgentCli.claudeCode.defaultModel,
+    LlmProvider.codex => AgentCli.codex.defaultModel,
+    LlmProvider.geminiCli => AgentCli.geminiCli.defaultModel,
   };
 
   /// Short aliases that map to full Claude model IDs.

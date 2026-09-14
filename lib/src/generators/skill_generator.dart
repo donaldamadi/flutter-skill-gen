@@ -41,6 +41,7 @@ class SkillGenerator {
     Map<String, String>? environment,
   }) : logger = logger ?? const Logger(),
        _httpClient = httpClient,
+       _environment = environment ?? Platform.environment,
        verifierMode =
            verifierMode ??
            _resolveVerifierMode(environment ?? Platform.environment);
@@ -64,6 +65,10 @@ class SkillGenerator {
   /// Optional HTTP client for testing.
   final http.Client? _httpClient;
 
+  /// Environment the run reads its overrides from. Forwarded to
+  /// providers that resolve an executable rather than a URL.
+  final Map<String, String> _environment;
+
   /// Mode used by [DraftVerifier] to reconcile AI drafts with the
   /// grounded evidence bundle. Defaults to the value of the
   /// `FLUTTER_SKILL_VERIFIER_MODE` env var (`annotate`, `strip`, or
@@ -83,7 +88,15 @@ class SkillGenerator {
   }
 
   /// Whether AI-powered generation is available.
-  bool get hasAi => apiKey != null && apiKey!.isNotEmpty;
+  ///
+  /// Providers that carry their own credentials (an agent CLI) need no
+  /// key, so availability turns on the provider rather than on
+  /// [apiKey] alone.
+  bool get hasAi {
+    if (!provider.requiresApiKey) return true;
+    final key = apiKey;
+    return key != null && key.isNotEmpty;
+  }
 
   /// Generates SKILL.md content from [facts] with Agent Skills
   /// spec-compliant YAML frontmatter.
@@ -229,10 +242,11 @@ class SkillGenerator {
 
     final client = LlmClientFactory.create(
       provider: provider,
-      apiKey: apiKey!,
+      apiKey: apiKey,
       model: model,
       baseUrl: baseUrl,
       httpClient: _httpClient,
+      environment: _environment,
     );
 
     try {
@@ -264,10 +278,11 @@ class SkillGenerator {
 
     final client = LlmClientFactory.create(
       provider: provider,
-      apiKey: apiKey!,
+      apiKey: apiKey,
       model: model,
       baseUrl: baseUrl,
       httpClient: _httpClient,
+      environment: _environment,
     );
 
     try {
@@ -300,10 +315,11 @@ class SkillGenerator {
 
     final client = LlmClientFactory.create(
       provider: provider,
-      apiKey: apiKey!,
+      apiKey: apiKey,
       model: model,
       baseUrl: baseUrl,
       httpClient: _httpClient,
+      environment: _environment,
     );
 
     try {

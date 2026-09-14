@@ -96,6 +96,10 @@ class WatchCommand extends Command<int> {
       return 1;
     }
 
+    if (resolved.unavailableReason case final reason?) {
+      logger.warn(reason);
+    }
+
     // Initial generation.
     await _regenerate(projectPath, config, const [], logger, resolved);
 

@@ -105,5 +105,52 @@ void main() {
         throwsA(isA<UnknownProviderException>()),
       );
     });
+
+    test('resolves claude-code with no key configured', () {
+      final resolved = resolve(['--provider', 'claude-code']);
+
+      expect(resolved.provider, LlmProvider.claudeCode);
+      expect(resolved.apiKey, isNull);
+      expect(resolved.model, 'sonnet');
+    });
+  });
+
+  group('ResolvedProvider.unavailableReason', () {
+    test('reports a missing key for a key-requiring provider', () {
+      const resolved = ResolvedProvider(
+        provider: LlmProvider.anthropic,
+        model: 'claude-sonnet-5',
+        apiKey: null,
+        baseUrl: null,
+      );
+
+      expect(resolved.unavailableReason, contains('No API key'));
+      // The warning is what points a keyless user at the way out.
+      expect(resolved.unavailableReason, contains('claude-code'));
+    });
+
+    test('is silent when a key is present', () {
+      const resolved = ResolvedProvider(
+        provider: LlmProvider.anthropic,
+        model: 'claude-sonnet-5',
+        apiKey: 'sk-ant-key',
+        baseUrl: null,
+      );
+
+      expect(resolved.unavailableReason, isNull);
+    });
+
+    test('never asks claude-code for a key', () {
+      const resolved = ResolvedProvider(
+        provider: LlmProvider.claudeCode,
+        model: 'sonnet',
+        apiKey: null,
+        baseUrl: null,
+      );
+
+      // Either it is silent (CLI installed) or it complains about the
+      // CLI — but never about a missing key.
+      expect(resolved.unavailableReason ?? '', isNot(contains('API key')));
+    });
   });
 }

@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
+import '../../ai/agent_cli_client.dart';
 import '../../ai/llm_client.dart';
 import '../../config/config_manager.dart';
 import '../../config/skillrc.dart';
 import '../../utils/logger.dart';
+import '../provider_options.dart';
 
 /// CLI command to manage flutter_skill_gen configuration.
 ///
@@ -114,6 +116,14 @@ class ConfigCommand extends Command<int> {
     if (setKey != null) {
       config.setApiKey(setKey);
       logger.success('API key saved for provider: ${config.provider.id}');
+      if (!config.provider.requiresApiKey) {
+        logger.warn(
+          'Provider "${config.provider.id}" carries its own '
+          'credentials and will not use this key. Pass '
+          '--set-provider to store it against the provider that '
+          'needs it.',
+        );
+      }
       didAction = true;
     }
 
@@ -219,7 +229,13 @@ class ConfigCommand extends Command<int> {
       ..info('')
       ..info('  provider: ${config.provider.id}');
 
-    if (config.hasApiKey) {
+    final provider = config.provider;
+    if (!provider.requiresApiKey) {
+      logger.info(
+        '  api_key:  (not needed — ${provider.id} uses its own '
+        'credentials)',
+      );
+    } else if (config.hasApiKey) {
       final key = config.apiKey!;
       final masked = key.length > 12
           ? '${key.substring(0, 8)}...'
@@ -252,12 +268,33 @@ class ConfigCommand extends Command<int> {
         ..info('  watch.debounce_ms: ${rc.watch.debounceMs}');
     }
 
-    if (!config.hasApiKey) {
+    if (!provider.requiresApiKey) {
+      final agent = agentCliFor(provider);
+      if (agent != null) {
+        final executable = AgentCliClient.resolveExecutable(agent);
+        final available = AgentCliClient.isAvailable(executable: executable);
+        logger
+          ..info('')
+          ..info(
+            available
+                ? 'The "$executable" CLI is on your PATH — generation '
+                      'will use it.'
+                : 'The "$executable" CLI is NOT on your PATH. Install '
+                      'it, point ${agent.executableEnvVar} at it, or '
+                      'switch to a provider with an API key.',
+          );
+      }
+    } else if (!config.hasApiKey) {
       logger
         ..info('')
         ..info(
           'Set your API key with: '
           'flutter_skill_gen config --set-key <key>',
+        )
+        ..info(
+          'Or generate without a key using a local agent CLI: '
+          'flutter_skill_gen config --set-provider '
+          'claude-code|codex|gemini-cli',
         );
     }
 

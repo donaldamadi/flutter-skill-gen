@@ -31,12 +31,35 @@ enum LlmProvider {
   openai('openai'),
 
   /// Google's Gemini `generateContent` API.
-  gemini('gemini');
+  gemini('gemini'),
 
-  const LlmProvider(this.id);
+  /// The locally installed `claude` CLI, driven in print mode.
+  ///
+  /// Authenticates with whatever credentials Claude Code already
+  /// holds, so it needs no API key of its own.
+  claudeCode('claude-code', requiresApiKey: false),
+
+  /// The locally installed `codex` CLI, driven with `codex exec`.
+  ///
+  /// Uses the ChatGPT account Codex is already signed in to.
+  codex('codex', requiresApiKey: false),
+
+  /// The locally installed `gemini` CLI, driven in headless mode.
+  ///
+  /// Uses the Google account Gemini CLI is already signed in to, and
+  /// is distinct from `gemini`, which calls the hosted API with a key.
+  geminiCli('gemini-cli', requiresApiKey: false);
+
+  const LlmProvider(this.id, {this.requiresApiKey = true});
 
   /// Stable identifier used in config files and on the CLI.
   final String id;
+
+  /// Whether this provider needs an API key before it can be used.
+  ///
+  /// `false` for providers that carry their own credentials, which is
+  /// what lets `SkillGenerator` enable AI generation without a key.
+  final bool requiresApiKey;
 
   /// All provider ids, for help text and validation messages.
   static List<String> get all => values.map((p) => p.id).toList();
@@ -60,6 +83,12 @@ enum LlmProvider {
       'openrouter' ||
       'ollama' => LlmProvider.openai,
       'gemini' || 'google' => LlmProvider.gemini,
+      'claude-code' ||
+      'claude_code' ||
+      'claudecode' ||
+      'cc' => LlmProvider.claudeCode,
+      'codex' || 'codex-cli' || 'codex_cli' => LlmProvider.codex,
+      'gemini-cli' || 'gemini_cli' || 'geminicli' => LlmProvider.geminiCli,
       _ => null,
     };
   }

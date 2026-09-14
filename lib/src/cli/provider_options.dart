@@ -1,5 +1,6 @@
 import 'package:args/args.dart';
 
+import '../ai/agent_cli_client.dart';
 import '../ai/llm_client.dart';
 import '../config/config_manager.dart';
 
@@ -25,7 +26,45 @@ class ResolvedProvider {
 
   /// Base URL override, or `null` for the provider's own default.
   final String? baseUrl;
+
+  /// Returns a description of why AI generation will not run, or
+  /// `null` when it is ready.
+  ///
+  /// Callers report this as a warning rather than an error: a missing
+  /// key or a missing `claude` binary still produces a skill file via
+  /// the template fallback, so it is never fatal.
+  String? get unavailableReason {
+    if (!provider.requiresApiKey) {
+      final agent = agentCliFor(provider);
+      if (agent == null) return null;
+      final executable = AgentCliClient.resolveExecutable(agent);
+      if (AgentCliClient.isAvailable(executable: executable)) return null;
+      return 'The "$executable" CLI is not on your PATH, so generation '
+          'will fall back to templates. Install it, point '
+          '${agent.executableEnvVar} at it, or pick a provider with an '
+          'API key.';
+    }
+
+    final key = apiKey;
+    if (key == null || key.isEmpty) {
+      return 'No API key configured for "${provider.id}", so '
+          'generation will fall back to templates. Set one with '
+          '--set-key, or run keyless with --provider claude-code, '
+          'codex, or gemini-cli.';
+    }
+
+    return null;
+  }
 }
+
+/// Returns the agent CLI [provider] drives, or `null` when it talks to
+/// a hosted API instead.
+AgentCli? agentCliFor(LlmProvider provider) => switch (provider) {
+  LlmProvider.claudeCode => AgentCli.claudeCode,
+  LlmProvider.codex => AgentCli.codex,
+  LlmProvider.geminiCli => AgentCli.geminiCli,
+  _ => null,
+};
 
 /// Thrown when a `--provider` flag does not name a known provider.
 class UnknownProviderException implements Exception {
@@ -50,6 +89,8 @@ void addProviderOptions(ArgParser parser) {
       help:
           'LLM provider for AI generation. '
           'Options: ${LlmProvider.all.join(', ')}. '
+          'Use "claude-code", "codex", or "gemini-cli" to generate '
+          'through a locally installed agent CLI with no API key. '
           'Use "openai" for any OpenAI-compatible endpoint '
           '(DeepSeek, Groq, Together, OpenRouter, Ollama, ...) '
           'together with --base-url.',

@@ -163,6 +163,30 @@ void main() {
           ConfigManager.defaultModelFor(LlmProvider.gemini),
           'gemini-3.8-flash',
         );
+        // An alias, not a pinned ID: the Claude CLI resolves it to
+        // whatever the current Sonnet release is.
+        expect(ConfigManager.defaultModelFor(LlmProvider.claudeCode), 'sonnet');
+      });
+
+      test('claude-code never reports a key', () {
+        // A stray ANTHROPIC_API_KEY in the environment would otherwise
+        // make `config --show` claim a key is in play when the CLI
+        // authenticates on its own.
+        final withEnvKey = ConfigManager(
+          configDir: tempDir.path,
+          environment: const {
+            'ANTHROPIC_API_KEY': 'sk-ant-stray',
+            'FLUTTER_SKILL_API_KEY': 'sk-stray',
+          },
+        )..setApiKey('sk-stored', target: LlmProvider.claudeCode);
+
+        expect(withEnvKey.apiKeyFor(LlmProvider.claudeCode), isNull);
+      });
+
+      test('claude-code reports no missing key', () {
+        config.setProvider(LlmProvider.claudeCode);
+        expect(config.hasApiKey, isFalse);
+        expect(config.apiKey, isNull);
       });
 
       test('model default follows the active provider', () {

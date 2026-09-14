@@ -111,6 +111,10 @@ class AnalyzeCommand extends Command<int> {
       return 1;
     }
 
+    if (resolved.unavailableReason case final reason?) {
+      logger.warn(reason);
+    }
+
     final skillGen = SkillGenerator(
       apiKey: resolved.apiKey,
       model: resolved.model,

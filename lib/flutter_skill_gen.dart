@@ -3,6 +3,7 @@
 /// first prompt.
 library;
 
+export 'src/ai/agent_cli_client.dart';
 export 'src/ai/claude_client.dart';
 export 'src/ai/gemini_client.dart';
 export 'src/ai/llm_client.dart';
