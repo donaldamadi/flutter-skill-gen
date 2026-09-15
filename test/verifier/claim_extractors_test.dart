@@ -145,6 +145,70 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> { }
       expect(claims, hasLength(1));
     });
 
+    group('negated statements are not claims', () {
+      // Sentences taken verbatim from a real generated skill file.
+      // Each one tells the reader the project does NOT use per-feature
+      // DI, which is exactly what the evidence says — flagging them
+      // punished the model for being correct, and taught writers to
+      // avoid saying the true thing.
+
+      test('"rather than per-feature injection"', () {
+        final claims = extractDiPerFeatureClaims(
+          'DI is centralized through Riverpod providers rather than '
+          'per-feature injection files.',
+        );
+        expect(claims, isEmpty);
+      });
+
+      test('"Don\'t create a per-feature DI file"', () {
+        final claims = extractDiPerFeatureClaims(
+          "- Don't create a per-feature DI/injection file for loans "
+          'providers.',
+        );
+        expect(claims, isEmpty);
+      });
+
+      test('"no per-feature DI"', () {
+        final claims = extractDiPerFeatureClaims(
+          'This project has no per-feature DI; providers are declared '
+          'where they are used.',
+        );
+        expect(claims, isEmpty);
+      });
+
+      test('"instead of feature-local DI"', () {
+        final claims = extractDiPerFeatureClaims(
+          'Register services centrally instead of feature-local DI.',
+        );
+        expect(claims, isEmpty);
+      });
+
+      test('"avoid per-feature dependency injection"', () {
+        final claims = extractDiPerFeatureClaims(
+          'Avoid per-feature dependency injection in this codebase.',
+        );
+        expect(claims, isEmpty);
+      });
+
+      test('"never registered per-feature"', () {
+        final claims = extractDiPerFeatureClaims(
+          'Dependencies are never registered per-feature here.',
+        );
+        expect(claims, isEmpty);
+      });
+
+      test('a negation in an earlier sentence does not excuse a later '
+          'claim', () {
+        // Suppression is scoped to the clause, so a stray "not" earlier
+        // on the line cannot smuggle a real claim past the verifier.
+        final claims = extractDiPerFeatureClaims(
+          'This is not a monorepo. Each feature registers its own '
+          'dependencies in a module.',
+        );
+        expect(claims, hasLength(1));
+      });
+    });
+
     test('does NOT catch generic DI mentions', () {
       final claims = extractDiPerFeatureClaims(
         'The project uses GetIt with injectable for DI.',

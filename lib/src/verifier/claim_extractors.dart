@@ -147,7 +147,50 @@ final _diPerFeaturePatterns = <RegExp>[
   ),
 ];
 
+/// Words that turn a per-feature DI phrase into a statement that the
+/// project does *not* use per-feature DI.
+///
+/// Without these, accurate guidance was flagged as a hallucination:
+/// "DI is centralized … rather than per-feature injection files" and
+/// "Don't create a per-feature DI file" both contain the phrase the
+/// patterns above look for while asserting the opposite. Penalising
+/// them taught writers to avoid stating the true thing, which is worse
+/// than the occasional missed claim.
+final _diNegationCues = RegExp(
+  r'(?:\bno\b|\bnot\b|\bnever\b|\bavoid(?:s|ed)?\b|\bwithout\b'
+  r'|\brather\s+than\b|\binstead\s+of\b|\bdo\s+not\b'
+  r"|\bdon'?t\b|\bdoesn'?t\b|\bisn'?t\b|\baren'?t\b"
+  r'|\bnone\s+of\b|\bno\s+longer\b)',
+  caseSensitive: false,
+);
+
+/// Returns the clause of [line] containing [index].
+///
+/// Suppression is scoped to one clause so a negation in an earlier
+/// sentence cannot smuggle a real claim past the verifier.
+String _clauseContaining(String line, int index) {
+  const separators = ['. ', '; ', ': ', '! ', '? ', ' — ', ' – '];
+
+  var start = 0;
+  for (final sep in separators) {
+    final i = line.lastIndexOf(sep, index);
+    if (i != -1 && i + sep.length > start && i + sep.length <= index) {
+      start = i + sep.length;
+    }
+  }
+
+  var end = line.length;
+  for (final sep in separators) {
+    final i = line.indexOf(sep, index);
+    if (i != -1 && i < end) end = i;
+  }
+
+  return line.substring(start, end);
+}
+
 /// Extracts phrases asserting DI is per-feature.
+///
+/// Phrases inside a negated clause are skipped — see [_diNegationCues].
 List<TextClaim> extractDiPerFeatureClaims(String text) {
   final claims = <TextClaim>[];
   final lines = text.split('\n');
@@ -155,12 +198,12 @@ List<TextClaim> extractDiPerFeatureClaims(String text) {
     final line = lines[i];
     for (final pat in _diPerFeaturePatterns) {
       final m = pat.firstMatch(line);
-      if (m != null) {
-        claims.add(
-          TextClaim(value: m.group(0)!, line: line, lineNumber: i + 1),
-        );
+      if (m == null) continue;
+      if (_diNegationCues.hasMatch(_clauseContaining(line, m.start))) {
         break;
       }
+      claims.add(TextClaim(value: m.group(0)!, line: line, lineNumber: i + 1));
+      break;
     }
   }
   return claims;
