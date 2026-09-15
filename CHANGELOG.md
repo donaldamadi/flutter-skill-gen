@@ -30,10 +30,16 @@ The analyzer does the scanning, an agent writes the prose, and the CLI verifies 
 - **Facts are written inside the workspace, not to `.skill_facts.json`.** A `prompt` run that is never assembled must not advance the baseline `sync` compares against, or the next `sync` would see no change and skip a SKILL.md that is still stale. `assemble` writes the root facts file at the end, as `analyze` does.
 - **`assemble` warns when the project changed between the two commands**, naming the scopes that appeared or disappeared.
 
+### Bug Fixes
+
+- **Features nested inside a layer container were invisible.** `modules` was recognised as a feature container at the top level but not inside a layer, so a 655-file app with twelve features under `lib/ui/modules/` reported `organization: flat`, zero features, and collapsed to a single SKILL.md instead of thirteen. The failure was silent, and `--split` could not work around it: that flag unions the recommended scopes with `structure.featureDirs`, which was empty, so every unresolvable domain was dropped and the planner fell back to single-file mode. The nested container list is now derived from the top-level container names, and `StructureAnalyzer` and `DomainAnalyzer` share it rather than each keeping a copy that had drifted — so a container understood at the top level can never be missed when nested.
+- **The verifier flagged correct statements that DI is centralized.** The per-feature DI check was a plain phrase match with no handling for negation, so a draft telling the reader this project does *not* use per-feature DI was annotated as unsupported. On a real thirteen-file run, eight of twelve `UNVERIFIED` markers were sentences like "DI is centralized through Riverpod providers rather than per-feature injection files" and "Don't create a per-feature DI/injection file". Both assert exactly what the evidence says. A per-feature phrase is now skipped when its clause carries a negation cue, scoped to the clause rather than the line so a stray negation earlier in a sentence cannot smuggle a genuine claim past the verifier.
+
 ### Known Limitations
 
 - **The Codex and Gemini CLI providers are written from those tools' documented flags, not from a verified run.** `codex exec --sandbox read-only -` and `gemini --output-format json` were taken from the official docs; only the Claude Code provider has been exercised end to end. A wrong flag is not destructive — the run fails and falls back to template output with the CLI's own error — but treat those two providers as unconfirmed until someone with them installed reports back.
 - **`--provider gemini-cli` needs a Gemini CLI new enough to accept `--output-format`.** Older builds reject it; the client accepts their plain-text output, so generation still works.
+- **Illustrative class names are still read as claims.** A draft that writes `XxxInitState` as a placeholder, or "`LoginNotifier`-style" as a naming convention, has those tokens flagged as unknown classes, because the extractor matches any PascalCase word carrying a known suffix. Four of the twelve markers in the run above were this. Narrowing it risks weakening a check that does catch real hallucinations.
 - **None of the agent-CLI providers suit CI.** A build server is not signed in to an agent. Keep using `FLUTTER_SKILL_API_KEY` there.
 
 ### Public API
