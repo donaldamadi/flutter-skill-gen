@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+Two fixes found by running 1.1.0 against a large real project.
+
+- **Features nested inside a layer container were invisible.** `modules` was recognised as a feature container at the top level but not inside a layer, so a 655-file app with twelve features under `lib/ui/modules/` reported `organization: flat`, zero features, and collapsed to a single SKILL.md instead of thirteen. The failure was silent, and `--split` could not work around it: that flag unions the recommended scopes with `structure.featureDirs`, which was empty, so every unresolvable domain was dropped and the planner fell back to single-file mode. The nested container list is now derived from the top-level container names, and `StructureAnalyzer` and `DomainAnalyzer` share it rather than each keeping a copy that had drifted — so a container understood at the top level can never be missed when nested.
+- **The verifier flagged correct statements that DI is centralized.** The per-feature DI check was a plain phrase match with no handling for negation, so a draft telling the reader this project does *not* use per-feature DI was annotated as unsupported. On a real thirteen-file run, eight of twelve `UNVERIFIED` markers were sentences like "DI is centralized through Riverpod providers rather than per-feature injection files" and "Don't create a per-feature DI/injection file". Both assert exactly what the evidence says. A per-feature phrase is now skipped when its clause carries a negation cue, scoped to the clause rather than the line so a stray negation earlier in a sentence cannot smuggle a genuine claim past the verifier.
+
 ## 1.1.0
 
 Two ways to generate skill files without an API key, both answering the
@@ -29,11 +36,6 @@ The analyzer does the scanning, an agent writes the prose, and the CLI verifies 
 - **An agent-written draft is held to the same standard as an API-written one.** This matters more, not less: an agent can read the whole repository, so only the evidence bundle stops it asserting something plausible but absent. `SkillGenerator.assemble` and `assembleAll` verify before finishing, and `assembleAll` raises `MissingDraftException` for a scope the plan named but no draft covers.
 - **Facts are written inside the workspace, not to `.skill_facts.json`.** A `prompt` run that is never assembled must not advance the baseline `sync` compares against, or the next `sync` would see no change and skip a SKILL.md that is still stale. `assemble` writes the root facts file at the end, as `analyze` does.
 - **`assemble` warns when the project changed between the two commands**, naming the scopes that appeared or disappeared.
-
-### Bug Fixes
-
-- **Features nested inside a layer container were invisible.** `modules` was recognised as a feature container at the top level but not inside a layer, so a 655-file app with twelve features under `lib/ui/modules/` reported `organization: flat`, zero features, and collapsed to a single SKILL.md instead of thirteen. The failure was silent, and `--split` could not work around it: that flag unions the recommended scopes with `structure.featureDirs`, which was empty, so every unresolvable domain was dropped and the planner fell back to single-file mode. The nested container list is now derived from the top-level container names, and `StructureAnalyzer` and `DomainAnalyzer` share it rather than each keeping a copy that had drifted — so a container understood at the top level can never be missed when nested.
-- **The verifier flagged correct statements that DI is centralized.** The per-feature DI check was a plain phrase match with no handling for negation, so a draft telling the reader this project does *not* use per-feature DI was annotated as unsupported. On a real thirteen-file run, eight of twelve `UNVERIFIED` markers were sentences like "DI is centralized through Riverpod providers rather than per-feature injection files" and "Don't create a per-feature DI/injection file". Both assert exactly what the evidence says. A per-feature phrase is now skipped when its clause carries a negation cue, scoped to the clause rather than the line so a stray negation earlier in a sentence cannot smuggle a genuine claim past the verifier.
 
 ### Known Limitations
 
