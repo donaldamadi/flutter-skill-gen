@@ -46,6 +46,32 @@ class StructureAnalyzer {
     'entities',
   };
 
+  /// Directory names that hold one subdirectory per feature.
+  static const featureContainerNames = [
+    'features',
+    'modules',
+    'feature',
+    'pages',
+  ];
+
+  /// Layer directories a feature container can sit inside.
+  static const layerContainerNames = ['presentation', 'ui'];
+
+  /// Feature containers nested inside a layer directory, such as
+  /// `ui/modules`.
+  ///
+  /// Derived from [featureContainerNames] rather than written out, so
+  /// a container recognised at the top level can never be missed when
+  /// it is nested — which is exactly how `ui/modules` came to be
+  /// skipped. `DomainAnalyzer` resolves feature paths from this same
+  /// list, keeping detection and per-feature analysis in lockstep.
+  static final List<String> nestedFeatureContainers = [
+    for (final layer in layerContainerNames) ...[
+      for (final container in [...featureContainerNames, 'screens'])
+        '$layer/$container',
+    ],
+  ];
+
   /// Names commonly used for shared/core modules rather than features.
   static const _nonFeatureNames = {
     'core',
@@ -115,7 +141,6 @@ class StructureAnalyzer {
   /// 4. Fallback: top-level dirs that aren't well-known non-feature names
   List<String> _detectFeatures(Directory libDir, List<String> topLevelDirs) {
     // 1. Check for an explicit top-level feature container.
-    const featureContainerNames = ['features', 'modules', 'feature', 'pages'];
     for (final containerName in featureContainerNames) {
       final containerDir = Directory(p.join(libDir.path, containerName));
       if (containerDir.existsSync()) {
@@ -123,17 +148,9 @@ class StructureAnalyzer {
       }
     }
 
-    // 2. For layer-first projects, look for features nested inside
-    //    presentation layer (e.g. presentation/pages/*, presentation/features/*).
-    const presentationSubContainers = [
-      'presentation/pages',
-      'presentation/features',
-      'presentation/screens',
-      'ui/pages',
-      'ui/features',
-      'ui/screens',
-    ];
-    for (final sub in presentationSubContainers) {
+    // 2. For layer-first projects, look for features nested inside the
+    //    presentation layer (e.g. presentation/pages/*, ui/modules/*).
+    for (final sub in nestedFeatureContainers) {
       final containerDir = Directory(p.join(libDir.path, sub));
       if (containerDir.existsSync()) {
         final subdirs = FileUtils.listSubdirectories(containerDir);
@@ -143,8 +160,7 @@ class StructureAnalyzer {
 
     // 3. Features directly under `presentation/` or `ui/` (no intermediate
     //    pages/features/screens layer).
-    const directLayerContainers = ['presentation', 'ui'];
-    for (final layer in directLayerContainers) {
+    for (final layer in layerContainerNames) {
       final containerDir = Directory(p.join(libDir.path, layer));
       if (!containerDir.existsSync()) continue;
 

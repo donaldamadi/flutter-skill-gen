@@ -1,0 +1,16 @@
+name: sample_ui_modules_app
+description: Fixture with features nested at lib/ui/modules/.
+version: 1.0.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_bloc: ^8.1.0
+  dio: ^5.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

@@ -6,6 +6,7 @@ import '../models/convention_info.dart';
 import '../models/domain_facts.dart';
 import '../models/structure_info.dart';
 import '../utils/file_utils.dart';
+import 'structure_analyzer.dart';
 
 /// Analyzes a single feature/domain directory within a Flutter project
 /// to produce [DomainFacts] for domain-specific skill generation.
@@ -108,32 +109,22 @@ class DomainAnalyzer {
     }
 
     // Check for explicit feature containers.
-    const featureContainers = ['features', 'modules', 'feature', 'pages'];
-    for (final container in featureContainers) {
+    for (final container in StructureAnalyzer.featureContainerNames) {
       final dir = Directory(p.join(libDir, container, domainName));
       if (dir.existsSync()) return dir;
     }
 
     // Check for layer-first nested features.
-    const presentationSubContainers = [
-      'presentation/pages',
-      'presentation/features',
-      'presentation/screens',
-      'ui/pages',
-      'ui/features',
-      'ui/screens',
-    ];
-    for (final sub in presentationSubContainers) {
+    for (final sub in StructureAnalyzer.nestedFeatureContainers) {
       final dir = Directory(p.join(libDir, sub, domainName));
       if (dir.existsSync()) return dir;
     }
 
     // Features directly under `presentation/` or `ui/` (no intermediate
-    // pages/features/screens layer). Mirrors
-    // `StructureAnalyzer._findFeatureDir` to keep feature detection and
-    // per-feature analysis in lockstep.
-    const directLayerContainers = ['presentation', 'ui'];
-    for (final layer in directLayerContainers) {
+    // pages/features/screens layer). Shares its container lists with
+    // `StructureAnalyzer` to keep feature detection and per-feature
+    // analysis in lockstep.
+    for (final layer in StructureAnalyzer.layerContainerNames) {
       final dir = Directory(p.join(libDir, layer, domainName));
       if (dir.existsSync()) return dir;
     }
